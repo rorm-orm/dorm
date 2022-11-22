@@ -22,6 +22,6 @@ dorm.dll
 dorm.dylib
 dorm.lib
 dorm.so
-./dorm
+/dorm
 dub.selections.json
-./update_downloader
+/update_downloader
