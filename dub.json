@@ -1,0 +1,36 @@
+{
+	"name": "dorm",
+	"license": "MIT",
+	"authors": [
+		"WebFreak <gh@webfreak.org>",
+		"myOmikron <git@omikron.dev>"
+	],
+	"copyright": "Copyright © 2022, WebFreak",
+	"dependencies": {
+		"mir-ion": "~>2.1"
+	},
+	"preBuildCommands": ["\"$DC\" -run download_dependencies.d ARCH $DUB_ARCH PLATFORM $DUB_PLATFORM"],
+	"extraDependencyFiles-posix": [
+		"download-map.txt", "librorm.a"
+	],
+	"extraDependencyFiles-windows": [
+		"download-map.txt", "rorm.lib"
+	],
+	"libs": ["rorm"],
+	"lflags-linux": ["-L$PACKAGE_DIR", "-R$PACKAGE_DIR"],
+	"lflags-osx": [
+		"-L$PACKAGE_DIR",
+		"-framework", "CoreFoundation",
+		"-framework", "SystemConfiguration",
+		"-framework", "SecurityFoundation"
+	],
+	"lflags-windows": ["/DEFAULTLIB:MSVCRT", "/NODEFAULTLIB:libcmt"],
+	"libs-windows": ["Ws2_32", "ntdll", "ucrt", "Bcrypt", "Userenv", "Ole32"],
+	"description": "A D ORM.",
+	"dflags": [
+		"-lowmem"
+	],
+	"subPackages": [
+		"build-models"
+	]
+}
