@@ -25,3 +25,6 @@ dorm.so
 /dorm
 dub.selections.json
 /update_downloader
+/rorm-cli
+/librorm.a
+/rorm.lib
