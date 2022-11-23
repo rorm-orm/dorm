@@ -1399,6 +1399,7 @@ struct UpdateOperation(
 	private ffi.DBTransactionHandle tx;
 	private ffi.FFICondition[] conditionTree;
 	private JoinInformation joinInformation;
+	private ffi.FFIUpdate[] updates;
 
 	// TODO: might be copyable
 	@disable this(this);
@@ -1439,25 +1440,91 @@ struct UpdateOperation(
 		}
 	}
 
-	void set(alias field)(TypeOfField!(T, field) value)
-	if (is(typeof(TypeOfField!(T, field))))
+	template set(FieldOrPatch...)
 	{
-		// TODO: add to update fields
+		static if (FieldOrPatch.length == 0)
+		{
+			typeof(this) set(P)(P patch) return
+			{
+				setPatch(patch);
+				return move(this);
+			}
+		}
+		else
+		{
+			static assert(FieldOrPatch.length == 1,
+				"Allowed template types on `update.set!(...)` are:\n"
+				~ "\t- `set!(\"fieldName\")(value)`\n"
+				~ "\t- `set(SomePatch(...))`");
+
+			static if (is(FieldOrPatch[0] == struct))
+			{
+				typeof(this) set(FieldOrPatch[0] patch) return
+				{
+					setPatch(patch);
+					return move(this);
+				}
+			}
+			else
+			{
+				static assert(hasDormField!(T, FieldOrPatch[0]),
+					"Called update.set with field `" ~ FieldOrPatch[0]
+					~ "`, but it doesn't exist on Model `"
+					~ T.stringof ~ "`\n\tAvailable fields:" ~ DormListFieldsForError!T);
+
+				typeof(this) set(typeof(mixin("T.", FieldOrPatch[0])) value) return
+				{
+					enum field = DormField!(T, FieldOrPatch[0]);
+					static immutable columnName = field.columnName;
+					updates ~= ffi.FFIUpdate(
+						ffi.ffi(columnName),
+						conditionValue!(field, typeof(value))(value)
+					);
+					return move(this);
+				}
+			}
+		}
 	}
 
-	void set(TPatch)(TPatch patch)
+	private void setPatch(TPatch)(TPatch patch)
 	if (isSomePatch!TPatch)
 	{
 		mixin ValidatePatch!(TPatch, T);
 
-		// TODO: set all patch fields
+		import std.array;
+
+		enum fields = FilterLayoutFields!(T, TPatch);
+
+		static assert(fields.length > 0, "Could not find any fields to set in patch! "
+			~ "Model: " ~ T.stringof ~ ", Patch: " ~ TPatch.stringof);
+
+		static foreach (i, field; fields)
+		{{
+			updates ~= ffi.FFIUpdate(
+				ffi.ffi(field.columnName),
+				conditionValue!(field, typeof(mixin("patch.", field.sourceColumn)))(
+					mixin("patch.", field.sourceColumn)
+				)
+			);
+		}}
 	}
 
 	/// Starts the update procedure and waits for the result. Throws in case of
-	/// an error.
-	void await()
+	/// an error. Returns the number of rows affected.
+	ulong await()
 	{
-		rorm_db_update();
+		return (() @trusted {
+			auto ctx = FreeableAsyncResult!ulong.make;
+			ffi.rorm_db_update(
+				db.handle,
+				tx,
+				ffi.ffi(DormLayout!T.tableName),
+				ffi.ffi(updates),
+				conditionTree.length ? &conditionTree[0] : null,
+				ctx.callback.expand
+			);
+			return ctx.result;
+		})();
 	}
 }
 

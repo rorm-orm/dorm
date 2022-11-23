@@ -47,7 +47,7 @@ mixin template ValidatePatch(Patch, TModel)
 	import std.traits : hasUDA;
 	import dorm.annotations : isDormFieldAttribute;
 
-	static if (!isImplicitPatch!(Patch, TModel))
+	static if (!isImplicitPatch!(TModel, Patch))
 	{
 		static assert (hasUDA!(Patch, DormPatch!TModel), "Patch struct " ~ Patch.stringof
 			~ " must be annoated using DormPatch!(" ~ TModel.stringof ~ ") exactly once!");
@@ -73,7 +73,20 @@ mixin template ValidatePatch(Patch, TModel)
 
 /// Checks if Patch is an implicit patch of TModel. That is a child struct of
 /// the given model class.
-enum isImplicitPatch(Patch, TModel) = is(__traits(parent, Patch) == TModel);
+enum isImplicitPatch(TModel, Patch) = is(__traits(parent, Patch) == TModel);
+
+template ImplicitPatchFieldName(TModel, Patch)
+{
+	static assert(isImplicitPatch!(TModel, Patch));
+
+	static foreach (member; TModel.tupleof)
+	{
+		static if (is(typeof(member) == Patch))
+		{
+			enum ImplicitPatchFieldName = __traits(identifier, member);
+		}
+	}
+}
 
 /// Checks if the given type Patch is either an implicit or an explicit patch.
 enum isSomePatch(Patch) =
@@ -137,6 +150,16 @@ static template ModelFromSomePatch(TModel)
 		alias ModelFromSomePatch = __traits(parent, TModel);
 	else
 		alias ModelFromSomePatch = DBType!TModel;
+}
+
+static template TypeOfField(TModel, alias field)
+{
+	static if (is(__traits(parent, field) == TModel)
+		|| is(__traits(parent, __traits(parent, field)) == TModel))
+		alias TypeOfField = typeof(field);
+	else
+		static assert(false,
+			"Can't use field " ~ field.stringof ~ " on Model type " ~ TModel.stringof);
 }
 
 template DBType(Selection...)
@@ -213,6 +236,11 @@ template FilterLayoutFields(T, TSelect)
 		enum FilterLayoutFields = DormFields!T;
 	else static if (is(TSelect : Model))
 		static assert(false, "Cannot filter for fields of Model class on a Model class");
+	else static if (isImplicitPatch!(T, TSelect))
+		enum FilterLayoutFields = filterFieldsPrefixed!T(
+			ImplicitPatchFieldName!(T, TSelect) ~ ".",
+			implicitPatchSelectionFieldNames!(T, TSelect)
+		);
 	else
 		enum FilterLayoutFields = filterFields!T(selectionFieldNames!(T, TSelect));
 }
@@ -227,6 +255,29 @@ private auto filterFields(T)(string[] sourceNames...)
 		if (sourceNames.canFind(field.sourceColumn))
 			ret ~= field;
 	return ret;
+}
+
+private auto filterFieldsPrefixed(T)(string prefix, string[] sourceNames...)
+{
+	import std.algorithm : canFind, startsWith;
+
+	enum fields = DormFields!T;
+	typeof(fields) ret;
+	foreach (ref field; fields)
+		if (field.sourceColumn.startsWith(prefix)
+			&& sourceNames.canFind(field.sourceColumn[prefix.length .. $]))
+		{
+			field.sourceColumn = field.sourceColumn[prefix.length .. $];
+			ret ~= field;
+		}
+	return ret;
+}
+
+private string[] implicitPatchSelectionFieldNames(T, TSelect)()
+{
+	static foreach (field; __traits(allMembers, T))
+		static if (field == ImplicitPatchFieldName!(T, TSelect))
+			return selectionFieldNames!(T, TSelect)();
 }
 
 private string[] selectionFieldNames(T, TSelect)(string prefix = "")

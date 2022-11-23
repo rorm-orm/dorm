@@ -80,6 +80,30 @@ void main()
 
 	assert(total == 3);
 
+	db.update!User
+		.set!`fields.banned`(true)
+		.condition(u => u.name.equals(userInsert2.name))
+		.await;
+
+	userInsert3.fullName = "Baz Baz";
+
+	db.update!User
+		.set(userInsert3)
+		.condition(u => u.name.equals(userInsert3.name))
+		.await;
+
+	userInsert2.banned = true;
+	f = [userInsert1, userInsert2, userInsert3];
+	total = 0;
+
+	foreach (user; db.select!User.stream)
+	{
+		assert(user.fields == f[total]);
+		total++;
+	}
+
+	assert(total == 3);
+
 	db.rawSQL("DELETE FROM " ~ DormLayout!User.tableName)
 		.exec();
 

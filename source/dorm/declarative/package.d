@@ -244,6 +244,22 @@ struct ModelFormat
 					ret ~= annotation;
 			return ret;
 		}
+
+		@serdeIgnore
+		string toPrettySourceString() const
+		{
+			string ret = sourceColumn ~ " : " ~ sourceType;
+			if (isBuiltinId)
+				ret ~= " [builtin ID]";
+			else if (isPrimaryKey)
+				ret ~= " [primary]";
+
+			if (isNullable)
+				ret ~= " [nullable]";
+			if (hasGeneratedDefaultValue)
+				ret ~= " [has default]";
+			return ret;
+		}
 	}
 
 	/// The exact name of the table later used in the DB, not neccessarily

@@ -111,14 +111,16 @@ enum DormForeignKeys(TModel : Model) = (() {
 	return all;
 })();
 
-enum DormFieldIndex(TModel : Model, string sourceName) = findFieldIdx(DormFields!TModel, sourceName, TModel.stringof);
+enum DormFieldIndex(TModel : Model, string sourceName) = findFieldIdx(DormFields!TModel, sourceName);
 enum hasDormField(TModel : Model, string sourceName) = DormFieldIndex!(TModel, sourceName) != -1;
 enum DormField(TModel : Model, string sourceName) = DormFields!TModel[DormFieldIndex!(TModel, sourceName)];
 
 enum DormPrimaryKeyIndex(TModel : Model) = findPrimaryFieldIdx(DormFields!TModel);
 enum DormPrimaryKey(TModel : Model) = DormFields!TModel[DormPrimaryKeyIndex!TModel];
 
-private auto findFieldIdx(ModelFormat.Field[] fields, string name, string modelName)
+enum DormListFieldsForError(TModel : Model) = formatFieldList(DormFields!TModel);
+
+private auto findFieldIdx(ModelFormat.Field[] fields, string name)
 {
 	foreach (i, ref field; fields)
 		if (field.sourceColumn == name)
@@ -132,6 +134,14 @@ private auto findPrimaryFieldIdx(ModelFormat.Field[] fields)
 		if (field.isPrimaryKey)
 			return i;
 	return -1;
+}
+
+private auto formatFieldList(ModelFormat.Field[] fields)
+{
+	string ret;
+	foreach (field; fields)
+		ret ~= "\n- " ~ field.toPrettySourceString;
+	return ret;
 }
 
 template LogicalFields(TModel)
