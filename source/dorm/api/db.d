@@ -121,7 +121,7 @@ struct DormDB
 		return DormTransaction(&this, txHandle);
 	}
 
-	/// Database operation to insert a single value or multiple values when a
+	/// Database operation to INSERT a single value or multiple values when a
 	/// slice is passed into `insert`.
 	///
 	/// It's possible to insert full Model instances, in which case every field
@@ -148,7 +148,7 @@ struct DormDB
 	}
 
 	/**
-	 * Returns a builder struct that can be used to perform an update statement
+	 * Returns a builder struct that can be used to perform an UPDATE statement
 	 * in the SQL database on the provided Model table.
 	 *
 	 * See_Also: `DormTransaction.update`
@@ -184,6 +184,41 @@ struct DormDB
 	{
 		return RawSQLIterator(&this, null, queryString, bindParams);
 	}
+}
+
+// defined this as global so that we can pass `Foo.fieldName` as alias argument,
+// to have it be selected.
+/**
+ * Starts a builder struct that can be used to SELECT (query) data from the
+ * database.
+ *
+ * It's possible to query full Model instances (get all fields), which are
+ * allocated by the GC. It's also possible to only query parts of a Model, for
+ * which DormPatch types are used, which is useful for improved query
+ * performance when only using parts of a Model as well as reusing the data in
+ * later update calls. (if the primary key is included in the patch)
+ *
+ * See `SelectOperation` for possible conditions and how to extract data.
+ *
+ * This method can also be used on transactions.
+ */
+static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
+	Selection...
+)(
+	return ref const DormDB db
+) @trusted
+{
+	return typeof(return)(&db, null);
+}
+
+/// ditto
+static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
+	Selection...
+)(
+	return ref const DormTransaction tx
+) @trusted
+{
+	return typeof(return)(tx.db, tx.txHandle);
 }
 
 /// Helper struct that makes it possible to `foreach` over the `rawSQL` result.
@@ -680,38 +715,6 @@ private void insertImpl(bool single, T)(
 		}
 		ctx.result();
 	})();
-}
-
-// defined this as global so that we can pass `Foo.fieldName` as alias argument,
-// to have it be selected.
-/// Starts a builder struct that can be used to query data from the database.
-///
-/// It's possible to query full Model instances (get all fields), which are
-/// allocated by the GC. It's also possible to only query parts of a Model, for
-/// which DormPatch types are used, which is useful for improved query
-/// performance when only using parts of a Model as well as reusing the data in
-/// later update calls. (if the primary key is included in the patch)
-///
-/// See `SelectOperation` for possible conditions and how to extract data.
-///
-/// This method can also be used on transactions.
-static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
-	Selection...
-)(
-	return ref const DormDB db
-) @trusted
-{
-	return typeof(return)(&db, null);
-}
-
-/// ditto
-static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
-	Selection...
-)(
-	return ref const DormTransaction tx
-) @trusted
-{
-	return typeof(return)(tx.db, tx.txHandle);
 }
 
 private struct ConditionBuilderData
@@ -1486,6 +1489,8 @@ struct UpdateOperation(
 		}
 	}
 
+	/// Method to set one field or multiple via a patch. Update will be
+	/// performed when `await` is called.
 	template set(FieldOrPatch...)
 	{
 		static if (FieldOrPatch.length == 0)
@@ -1524,7 +1529,7 @@ struct UpdateOperation(
 					static immutable columnName = field.columnName;
 					updates ~= ffi.FFIUpdate(
 						ffi.ffi(columnName),
-						conditionValue!(field, typeof(value))(value)
+						conditionValue!field(value)
 					);
 					return move(this);
 				}
@@ -1548,7 +1553,7 @@ struct UpdateOperation(
 		{{
 			updates ~= ffi.FFIUpdate(
 				ffi.ffi(field.columnName),
-				conditionValue!(field, typeof(mixin("patch.", field.sourceColumn)))(
+				conditionValue!field(
 					mixin("patch.", field.sourceColumn)
 				)
 			);
@@ -1559,6 +1564,8 @@ struct UpdateOperation(
 	/// an error. Returns the number of rows affected.
 	ulong await()
 	{
+		// TODO: use join information
+
 		return (() @trusted {
 			auto ctx = FreeableAsyncResult!ulong.make;
 			ffi.rorm_db_update(
