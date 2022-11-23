@@ -30,9 +30,10 @@ void main(string[] args)
 	rq.addHeaders(["User-Agent": "[update_downloader.d] https://github.com/rorm-orm/dorm"]);
 
 	auto output = File("download-map.txt", "w");
-	output.writeln("# rorm-cli");
+	output.write("# rorm-cli - ");
 	putDownloads(rq, "https://api.github.com/repos/rorm-orm/rorm-cli/releases", output);
-	output.writeln("# rorm-lib");
+	output.writeln();
+	output.write("# rorm-lib - ");
 	putDownloads(rq, "https://api.github.com/repos/rorm-orm/rorm-lib/releases", output);
 }
 
@@ -50,19 +51,19 @@ void putDownloads(ref Request rq, string url, ref File output)
 
 	string[ArchSuffix] downloadURLs;
 
-	foreach (release; rormReleases.array)
+	auto release = rormReleases.array[0];
+
+	output.writeln(release["tag_name"].str);
+	foreach (asset; release["assets"].array)
 	{
-		foreach (asset; release["assets"].array)
+		string assetName = asset["name"].str;
+		string downloadUrl = asset["browser_download_url"].str;
+		foreach_reverse (i, missingSuffix; missingAssetSuffixes)
 		{
-			string assetName = asset["name"].str;
-			string downloadUrl = asset["browser_download_url"].str;
-			foreach_reverse (i, missingSuffix; missingAssetSuffixes)
+			if (matchesAsset(assetName, missingSuffix))
 			{
-				if (matchesAsset(assetName, missingSuffix))
-				{
-					downloadURLs[missingSuffix] = downloadUrl;
-					missingAssetSuffixes = missingAssetSuffixes.remove(i);
-				}
+				downloadURLs[missingSuffix] = downloadUrl;
+				missingAssetSuffixes = missingAssetSuffixes.remove(i);
 			}
 		}
 	}
