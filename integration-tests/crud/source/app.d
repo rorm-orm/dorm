@@ -69,7 +69,7 @@ void main()
 	db.insert(userInsert2);
 	db.insert(userInsert3);
 
-	User.Fields[3] f = [userInsert1, userInsert2, userInsert3];
+	User.Fields[] f = [userInsert1, userInsert2, userInsert3];
 
 	size_t total;
 	foreach (user; db.select!User.stream)
@@ -104,8 +104,7 @@ void main()
 
 	assert(total == 3);
 
-	db.rawSQL("DELETE FROM " ~ DormLayout!User.tableName)
-		.exec();
+	assert(db.remove!User.all() == 3);
 
 	foreach (user; db.select!User.stream)
 		assert(false, "Deleted from " ~ DormLayout!User.tableName
@@ -113,11 +112,27 @@ void main()
 
 	total = 0;
 	db.insert(f[]);
+	User toRemove;
 	foreach (user; db.select!User.stream)
 	{
 		assert(user.fields == f[total]);
+		if (total == 1)
+			toRemove = user;
 		total++;
 	}
 
 	assert(total == 3);
+
+	assert(db.remove(toRemove));
+	total = 0;
+	f = [userInsert1, userInsert3];
+	foreach (user; db.select!User.stream)
+	{
+		assert(user.fields == f[total]);
+		if (total == 1)
+			toRemove = user;
+		total++;
+	}
+
+	assert(total == 2);
 }

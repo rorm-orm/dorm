@@ -159,6 +159,31 @@ struct DormDB
 	}
 
 	/**
+	 * Returns a builder struct that can be used to perform a DELETE statement
+	 * in the SQL database on the provided Model table.
+	 *
+	 * See_Also: `DormTransaction.remove`
+	 */
+	RemoveOperation!T remove(T : Model)() return pure
+	{
+		return RemoveOperation!T(&this, null);
+	}
+
+	/**
+	 * Deletes the given model instance from the database.
+	 *
+	 * Equivalent to calling `db.remove!T.single(instance)`.
+	 *
+	 * See_Also: `RemoveOperation.single`
+	 *
+	 * Returns: true if anything was deleted, false otherwise.
+	 */
+	ulong remove(T : Model)(T instance) return
+	{
+		return remove!T.single(instance);
+	}
+
+	/**
 	 * This function executes a raw SQL statement.
 	 *
 	 * Iterate over the result using `foreach`.
@@ -511,6 +536,31 @@ struct DormTransaction
 	UpdateOperation!T update(T : Model)() return pure
 	{
 		return UpdateOperation!T(db, txHandle);
+	}
+
+	/**
+	 * Returns a builder struct that can be used to perform a DELETE statement
+	 * in the SQL database on the provided Model table.
+	 *
+	 * See_Also: `DormDB.remove`
+	 */
+	RemoveOperation!T remove(T : Model)() return pure
+	{
+		return RemoveOperation!T(db, txHandle);
+	}
+
+	/**
+	 * Deletes the given model instance from the database inside the transaction.
+	 *
+	 * Equivalent to calling `tx.remove!T.single(instance)`.
+	 *
+	 * See_Also: `RemoveOperation.single`
+	 *
+	 * Returns: true if anything was deleted, false otherwise.
+	 */
+	bool remove(T : Model)(T instance) return
+	{
+		return remove!T.single(instance);
 	}
 }
 
@@ -1578,6 +1628,118 @@ struct UpdateOperation(
 			);
 			return ctx.result;
 		})();
+	}
+}
+
+/**
+ * This is the builder struct that's used for delete operations.
+ *
+ * Don't construct this struct manually, use the db.remove or tx.remove method
+ * to create this struct.
+ */
+struct RemoveOperation(T : Model)
+{
+@safe:
+	private const(DormDB)* db;
+	private ffi.DBTransactionHandle tx;
+
+	// TODO: might be copyable
+	@disable this(this);
+
+	/// Argument to `condition`. Callback that takes in a
+	/// `ConditionBuilder!T` and returns a `Condition` that can easily be
+	/// created using that builder.
+	alias ConditionBuilderCallback = Condition delegate(ConditionBuilder!T);
+
+	/**
+	 * Deletes the rows matching this condition. Maps to the `WHERE` clause in
+	 * an SQL statement.
+	 *
+	 * See `ConditionBuilder` to see how the callback-based overload is
+	 * implemented. Basically the argument that is passed to the callback
+	 * is a virtual type that mirrors all the DB-related types from the
+	 * Model class, on which operations such as `.equals` or `.like` can
+	 * be called to generate conditions.
+	 *
+	 * Use the `Condition.and(...)`, `Condition.or(...)` or `Condition.not(...)`
+	 * methods to combine conditions into more complex ones. You can also
+	 * choose to not use the builder object at all and integrate manually
+	 * constructed.
+	 *
+	 * Returns: DB-returned number of how many rows have been deleted.
+	 */
+	ulong byCondition(
+		ConditionBuilderCallback callback
+	) return @trusted
+	{
+		scope ConditionBuilderData data;
+		scope ConditionBuilder!T builder;
+		builder.builderData = &data;
+		auto conditionTree = callback(builder).makeTree;
+		auto joinInformation = move(data.joinInformation);
+
+		// TODO: use join information
+
+		return (() @trusted {
+			auto ctx = FreeableAsyncResult!ulong.make;
+			ffi.rorm_db_delete(
+				db.handle,
+				tx,
+				ffi.ffi(DormLayout!T.tableName),
+				&conditionTree[0],
+				ctx.callback.expand
+			);
+			return ctx.result;
+		})();
+	}
+
+	/**
+	 * Deletes the passed-in value by limiting the delete operation to the
+	 * primary key of this instance.
+	 *
+	 * Returns: true if anything was deleted, false otherwise.
+	 */
+	bool single(T value) @trusted
+	{
+		ffi.FFICondition condition, lhs, rhs;
+		condition.type = ffi.FFICondition.Type.BinaryCondition;
+		condition.binaryCondition.type = ffi.FFIBinaryCondition.Type.Equals;
+		condition.binaryCondition.lhs = &lhs;
+		condition.binaryCondition.rhs = &rhs;
+
+		lhs.type = ffi.FFICondition.Type.Value;
+		rhs.type = ffi.FFICondition.Type.Value;
+		lhs.value = columnValue(DormLayout!T.tableName, DormPrimaryKey!T.columnName);
+		rhs.value = conditionValue!(DormPrimaryKey!T)(
+			mixin("value.", DormPrimaryKey!T.sourceColumn));
+
+		auto ctx = FreeableAsyncResult!ulong.make;
+		ffi.rorm_db_delete(
+			db.handle,
+			tx,
+			ffi.ffi(DormLayout!T.tableName),
+			&condition,
+			ctx.callback.expand
+		);
+		return ctx.result != 0;
+	}
+
+	/** 
+	 * Deletes all entries in this model.
+	 *
+	 * Returns: DB-returned number of how many rows have been deleted.
+	 */
+	ulong all() @trusted
+	{
+		auto ctx = FreeableAsyncResult!ulong.make;
+		ffi.rorm_db_delete(
+			db.handle,
+			tx,
+			ffi.ffi(DormLayout!T.tableName),
+			null,
+			ctx.callback.expand
+		);
+		return ctx.result;
 	}
 }
 
