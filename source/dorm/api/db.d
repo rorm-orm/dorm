@@ -859,7 +859,7 @@ struct PopulateBuilder(T)
 /// This MUST be mixed in at the end to show proper members
 private mixin template DynamicMissingMemberErrorHelper(string fieldName, string simplifyName = "")
 {
-	auto opDispatch(string member)()
+	auto opDispatch(string member, string file = __FILE__, size_t line = __LINE__)()
 	{
 		import std.string : join;
 
@@ -868,10 +868,42 @@ private mixin template DynamicMissingMemberErrorHelper(string fieldName, string 
 		enum suggestion = findSuggestion(available, member);
 		enum suggestionMsg = suggestion.length ? "\n\n\t\tDid you mean " ~ suggestion ~ "?" : "";
 
-		pragma(msg, supplErrorPrefix ~ fieldName ~ " `" ~ member ~ "` does not exist on "
+		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
+			~ fieldName ~ " `" ~ member ~ "` does not exist on "
 			~ (simplifyName.length ? simplifyName : typeof(this).stringof) ~ ". Available members are: "
 			~ available.join(", ") ~ suggestionMsg);
-		static assert(false);
+		static assert(false, "See DORM error above.");
+	}
+}
+
+private mixin template DisallowOperators(string typeName)
+{
+	auto opBinary(string op, R, string file = __FILE__, size_t line = __LINE__)(const R rhs)
+	const @safe pure nothrow @nogc
+	{
+		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
+			~ "You are not supposed to use operators like '" ~ .op ~ "' on "
+			~ typeName ~ "! Use the operation fields on this instead.");
+		static assert(false, "See DORM error above.");
+	}
+
+	auto opBinaryRight(string op, L, string file = __FILE__, size_t line = __LINE__)(const L lhs)
+	const @safe pure nothrow @nogc
+	{
+		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
+			~ "You are not supposed to use operators like '" ~ .op ~ "' on "
+			~ typeName ~ "! Use the operation fields on this instead.");
+		static assert(false, "See DORM error above.");
+	}
+
+	bool opEquals(R, string file = __FILE__, size_t line = __LINE__)(const R other)
+	const @safe pure nothrow @nogc
+	if (!is(immutable R == immutable typeof(this)))
+	{
+		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
+			~ "You are not supposed to use operators like '==' on "
+			~ typeName ~ "! Use the operation fields on this instead.");
+		static assert(false, "See DORM error above.");
 	}
 }
 
@@ -918,7 +950,9 @@ private string findSuggestion(string[] available, string member)
 	return null;
 }
 
-private enum supplErrorPrefix = "           \x1B[1;31mDORM Error:\x1B[m ";
+private enum errorBoldPrefix = "\x1B[1m";
+private enum supplErrorWithFilePrefix = "\x1B[1;31mDORM Error:\x1B[m ";
+private enum supplErrorPrefix = "           " ~ supplErrorWithFilePrefix;
 
 /// Helper type to quickly create `field == false` conditions for boolean fields.
 ///
@@ -1132,6 +1166,10 @@ struct PopulateBuilderField(ModelRef, ModelFormat.Field field, string srcTableNa
 
 	// TODO: nested foreign keys
 
+	mixin DisallowOperators!(
+		"`PopulateBuilderField` on " ~ RefDB.stringof ~ "." ~ field.sourceColumn
+	);
+
 	mixin DynamicMissingMemberErrorHelper!(
 		"populate field",
 		"`PopulateBuilderField` on " ~ RefDB.stringof ~ "." ~ field.sourceColumn
@@ -1321,6 +1359,10 @@ struct ConditionBuilderField(T, ModelFormat.Field field)
 		));
 	}
 
+	mixin DisallowOperators!(
+		"`ConditionBuilderField!(" ~ T.stringof ~ ")` on " ~ field.sourceColumn
+	);
+
 	mixin DynamicMissingMemberErrorHelper!(
 		"field comparision operator",
 		"`ConditionBuilderField!(" ~ T.stringof ~ ")` on " ~ field.sourceColumn
@@ -1352,6 +1394,10 @@ struct OrderBuilderField(T, ModelFormat.Field field)
 	{
 		return ffi.FFIOrderByEntry(ffi.FFIOrdering.desc, ffi.ffi(tableName), ffi.ffi(columnName));
 	}
+
+	mixin DisallowOperators!(
+		"`OrderBuilderField!(" ~ T.stringof ~ ")` on " ~ field.sourceColumn
+	);
 
 	mixin DynamicMissingMemberErrorHelper!(
 		"field ordering",
