@@ -188,8 +188,8 @@ FFIValue conditionValue(ModelFormat.Field fieldInfo, T)(T c) @trusted
 		ret.str = c;
 	}
 	else
-		static assert(false, "Unsupported condition value type: " ~ T.stringof
-			~ text(" in column ", fieldInfo.sourceColumn, " in file ", fieldInfo.definedAt).idup);
+		static assert(false, text("Unsupported condition value type: ", T.stringof,
+			"\n\tTried to build this value for column ", fieldInfo.sourceColumn, " in ", fieldInfo.definedAt).idup);
 	return ret;
 }
 
