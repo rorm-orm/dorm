@@ -1,4 +1,4 @@
-name "inserts"
+name "crud"
 
 dependency "dorm" path="../.."
 dependency "dorm:build-models" path="../.."
