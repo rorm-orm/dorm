@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-pushd ../../rorm/
-cargo build -p rorm-lib -r -F logging
-cargo build -p rorm-cli -r
-export RORM_CLI="$(pwd)/target/release/rorm-cli"
+pushd ..
+export RORM_CLI="$(pwd)/rorm-cli"
 popd
 
 if [ -z "${1:-}" ];

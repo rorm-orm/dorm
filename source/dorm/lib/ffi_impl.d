@@ -10,11 +10,11 @@ struct FFIArray(T)
 	/**
 	 * Pointer to the first item in the slice.
 	 */
-	T* content;
+	@system T* content;
 	/**
 	 * The length of the slice. (count of elements)
 	 */
-	size_t size;
+	@system size_t size;
 
 	this(typeof(null)) @safe
 	{
@@ -426,9 +426,11 @@ struct FFIValue
 	{
 		/// This represents `NULL` in SQL.
 		Null,
-		/// Representation of an identifier, e.g. a column name.
+		/// Representation of an identifier.
 		/// The value will not be escaped, so do not pass unchecked data to it.
 		Identifier,
+		/// Representation of a column.
+		Column,
 		/// The value represents a string, being escaped (e.g. quoted)
 		String,
 		/// The value represents a 64 bit signed integer
@@ -459,6 +461,8 @@ struct FFIValue
 	{
 		/// Corresponds to Type.Identifier
 		FFIString identifier;
+		/// Corresponds to Type.Column
+		FFIColumn column;
 		/// Corresponds to Type.String
 		FFIString str;
 		/// Corresponds to Type.I64
@@ -493,6 +497,8 @@ struct FFIValue
 				return `FFIValue(null)`;
 			case Type.Identifier:
 				return `FFIValue(` ~ identifier.data.idup ~ ")";
+			case Type.Column:
+				return `FFIValue(` ~ column.to!string ~ ")";
 			case Type.String:
 				return `FFIValue("` ~ str.data.idup ~ `")`;
 			case Type.I64:
@@ -783,12 +789,43 @@ struct FFILimitClause
 	FFIOption!ulong offset;
 }
 
+/// Contains a column name / reference that can be used in condition values.
+struct FFIColumn
+{
+	/// Optionally specify which table this column refers to.
+	FFIOption!FFIString tableName;
+	/// The name of the column in the table.
+	FFIString columnName;
+
+	this(FFIString columnName)
+	{
+		this.columnName = columnName;
+	}
+
+	this(FFIString tableName, FFIString columnName)
+	{
+		this.tableName = tableName;
+		this.columnName = columnName;
+	}
+
+	string toString() const @trusted pure nothrow
+	{
+		import std.conv : text;
+	
+		if (tableName.isNull)
+			return text("Column(", columnName.data, ")");
+		else
+			return text("Column(", tableName.raw_value.data, ".", columnName.data, ")");
+	}
+}
+
 /**
  * Allows specifying SQL `table_name.column_name as select_alias` syntax in a
  * DB-agnostic way.
  */
 struct FFIColumnSelector
 {
+@safe:
 	/// Optionally define which table or join alias this column comes from.
 	FFIOption!FFIString tableName;
 	/// The column name to select.
@@ -827,10 +864,26 @@ enum FFIOrdering
 /// Represents a single part of an `ORDER BY` clause in SQL.
 struct FFIOrderByEntry
 {
+@safe:
 	/// Specifies if this is ordered in ascending or descending order.
 	FFIOrdering ordering;
+	/// Specifies the table for the column.
+	FFIOption!FFIString tableName;
 	/// Specifies on which column to order on.
 	FFIString columnName;
+
+	this(FFIOrdering ordering, FFIString columnName)
+	{
+		this.ordering = ordering;
+		this.columnName = columnName;
+	}
+
+	this(FFIOrdering ordering, FFIString tableName, FFIString columnName)
+	{
+		this.ordering = ordering;
+		this.tableName = tableName;
+		this.columnName = columnName;
+	}
 }
 
 /**

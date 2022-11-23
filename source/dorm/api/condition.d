@@ -203,6 +203,16 @@ FFIValue conditionIdentifier(return string identifier) @safe
 	return ret;
 }
 
+FFIValue columnValue(return string table, return string column) @safe
+{
+	FFIValue ret;
+	ret.type = FFIValue.Type.Column;
+	(() @trusted {
+		ret.column = ffi.FFIColumn(ffi.ffi(table), ffi.ffi(column));
+	})();
+	return ret;
+}
+
 ffi.FFICondition[] makeTree(Condition c) @trusted
 {
 	// we store all conditions sequentially in a flat list, this function may be
@@ -336,6 +346,7 @@ string dumpTree(ffi.FFICondition[] c)
 			{
 				case FFIValue.Type.String: query ~= '`' ~ c.value.str[] ~ '`'; break;
 				case FFIValue.Type.Identifier: query ~= "ident:" ~ c.value.identifier[]; break;
+				case FFIValue.Type.Column: query ~= c.value.column.to!string; break;
 				case FFIValue.Type.Bool: query ~= c.value.boolean.to!string; break;
 				case FFIValue.Type.I16: query ~= "i16:" ~ c.value.i16.to!string; break;
 				case FFIValue.Type.I32: query ~= "i32:" ~ c.value.i32.to!string; break;

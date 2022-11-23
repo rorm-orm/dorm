@@ -705,7 +705,7 @@ struct ConditionBuilder(T)
 			mixin("ConditionBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				" = ConditionBuilderField!(typeof(T.", field.sourceColumn, "), field)(`",
-				DormLayout!T.tableName, ".", field.columnName,
+				DormLayout!T.tableName, "`, `", field.columnName,
 				"`);");
 		}
 	}
@@ -742,7 +742,7 @@ struct OrderBuilder(T)
 			mixin("OrderBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				" = OrderBuilderField!(typeof(T.", field.sourceColumn, "), field)(`",
-				DormLayout!T.tableName, ".", field.columnName,
+				DormLayout!T.tableName, "`, `", field.columnName,
 				"`);");
 		}
 	}
@@ -850,8 +850,8 @@ struct NotConditionBuilder(T)
 			mixin("Condition ",
 				field.sourceColumn.lastIdentifier,
 				"() @property { return Condition(UnaryCondition(UnaryConditionType.Not,
-					makeConditionIdentifier(`",
-				DormLayout!T.tableName, ".", field.columnName,
+					makeColumnReference(`",
+				DormLayout!T.tableName, "`, `", field.columnName,
 				"`))); }");
 		}
 	}
@@ -859,10 +859,10 @@ struct NotConditionBuilder(T)
 	mixin DynamicMissingMemberErrorHelper!"negated condition field";
 }
 
-private Condition* makeConditionIdentifier(T)(T value) @safe
+private Condition* makeColumnReference(string tableName, string columnName) @safe
 {
 	// TODO: think of how we can abstract memory allocation here
-	return new Condition(conditionIdentifier(value));
+	return new Condition(columnValue(tableName, columnName));
 }
 
 private Condition* makeConditionConstant(ModelFormat.Field fieldInfo, T)(T value) @safe
@@ -906,9 +906,9 @@ private mixin template ForeignJoinHelper()
 			auto lhs = new ffi.FFICondition();
 			auto rhs = new ffi.FFICondition();
 			lhs.type = ffi.FFICondition.Type.Value;
-			lhs.value = conditionIdentifier(placeholder ~ "." ~ ModelRef.primaryKeyField.columnName);
+			lhs.value = columnValue(placeholder, ModelRef.primaryKeyField.columnName);
 			rhs.type = ffi.FFICondition.Type.Value;
-			rhs.value = conditionIdentifier(srcTableName ~ "." ~ field.columnName);
+			rhs.value = columnValue(srcTableName, field.columnName);
 			condition.binaryCondition.lhs = lhs;
 			condition.binaryCondition.rhs = rhs;
 
@@ -949,14 +949,14 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, stri
 			mixin("ConditionBuilderField!(ModelRef.PrimaryKeyType, field) ",
 				field.sourceColumn.lastIdentifier,
 				" = ConditionBuilderField!(ModelRef.PrimaryKeyType, field)(`",
-				srcTableName, ".", field.columnName,
+				srcTableName, "`, `", field.columnName,
 				"`);");
 		}
 		else
 		{
 			mixin("ConditionBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
-				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder ~ `.",
+				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder, `",
 				field.columnName,
 				"`); }");
 		}
@@ -981,14 +981,14 @@ struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field, string s
 			mixin("OrderBuilderField!(ModelRef.PrimaryKeyType, field) ",
 				field.sourceColumn.lastIdentifier,
 				" = OrderBuilderField!(ModelRef.PrimaryKeyType, field)(`",
-				srcTableName, ".", field.columnName,
+				srcTableName, "`, `", field.columnName,
 				"`);");
 		}
 		else
 		{
 			mixin("OrderBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
-				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder ~ `.",
+				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder, `",
 				field.columnName,
 				"`); }");
 		}
@@ -1062,17 +1062,19 @@ struct ConditionBuilderField(T, ModelFormat.Field field)
 {
 	// TODO: all the type specific field to Condition thingies
 
+	private string tableName;
 	private string columnName;
 
 	/// Constructs this ConditionBuilderField with the given columnName for generated conditions.
-	this(string columnName) @safe
+	this(string tableName, string columnName) @safe
 	{
+		this.tableName = tableName;
 		this.columnName = columnName;
 	}
 
 	private Condition* lhs() @safe
 	{
-		return makeConditionIdentifier(columnName);
+		return makeColumnReference(tableName, columnName);
 	}
 
 	/// Returns: SQL condition `field == value`
@@ -1216,24 +1218,26 @@ struct ConditionBuilderField(T, ModelFormat.Field field)
 /// callback. (`OrderBuilder`) Defaults to ascending.
 struct OrderBuilderField(T, ModelFormat.Field field)
 {
+	private string tableName;
 	private string columnName;
 
 	/// Constructs this OrderBuilderField with the given columnName for generated orders.
-	this(string columnName) @safe
+	this(string tableName, string columnName) @safe
 	{
+		this.tableName = tableName;
 		this.columnName = columnName;
 	}
 
 	/// Ascending ordering.
 	ffi.FFIOrderByEntry asc() @safe
 	{
-		return ffi.FFIOrderByEntry(ffi.FFIOrdering.asc, ffi.ffi(columnName));
+		return ffi.FFIOrderByEntry(ffi.FFIOrdering.asc, ffi.ffi(tableName), ffi.ffi(columnName));
 	}
 
 	/// Descending ordering.
 	ffi.FFIOrderByEntry desc() @safe
 	{
-		return ffi.FFIOrderByEntry(ffi.FFIOrdering.desc, ffi.ffi(columnName));
+		return ffi.FFIOrderByEntry(ffi.FFIOrdering.desc, ffi.ffi(tableName), ffi.ffi(columnName));
 	}
 
 	mixin DynamicMissingMemberErrorHelper!(
