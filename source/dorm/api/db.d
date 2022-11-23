@@ -4,6 +4,7 @@ import dorm.declarative;
 import dorm.declarative.conversion;
 import dorm.lib.util;
 import dorm.types;
+import dorm.model : Model;
 import ffi = dorm.lib.ffi;
 
 import std.algorithm : any, move;
@@ -63,6 +64,7 @@ struct DBConnectOptions
  * Use the (UFCS) methods
  *
  * - $(LREF select)
+ * - $(LREF update)
  * - $(LREF insert)
  *
  * to access the database.
@@ -146,6 +148,17 @@ struct DormDB
 	}
 
 	/**
+	 * Returns a builder struct that can be used to perform an update statement
+	 * in the SQL database on the provided Model table.
+	 *
+	 * See_Also: `DormTransaction.update`
+	 */
+	UpdateOperation!T update(T : Model)() return pure
+	{
+		return UpdateOperation!T(&this, null);
+	}
+
+	/**
 	 * This function executes a raw SQL statement.
 	 *
 	 * Iterate over the result using `foreach`.
@@ -158,13 +171,11 @@ struct DormDB
 	 * The number of placeholder must match with the number of provided bind
 	 * parameters.
 	 *
-	 * To include the statement in a transaction specify `transaction` as a valid
-	 * Transaction. As the Transaction needs to be mutable, it is important to not
-	 * use the Transaction anywhere else until the callback is finished.
-	 *
 	 * Params:
 	 *     queryString = SQL statement to execute.
 	 *     bindParams = Parameters to fill into placeholders of `queryString`.
+	 *
+	 * See_Also: `DormTransaction.rawSQL`
 	 */
 	RawSQLIterator rawSQL(
 		scope return const(char)[] queryString,
@@ -427,6 +438,44 @@ struct DormTransaction
 	void insert(T)(scope T[] value)
 	{
 		return insertImpl!false(db.handle, value, txHandle);
+	}
+
+	/**
+	 * This function executes a raw SQL statement.
+	 *
+	 * Iterate over the result using `foreach`.
+	 *
+	 * Statements are executed as prepared statements, if possible.
+	 *
+	 * To define placeholders, use `?` in SQLite and MySQL and $1, $n in Postgres.
+	 * The corresponding parameters are bound in order to the query.
+	 *
+	 * The number of placeholder must match with the number of provided bind
+	 * parameters.
+	 *
+	 * Params:
+	 *     queryString = SQL statement to execute.
+	 *     bindParams = Parameters to fill into placeholders of `queryString`.
+	 *
+	 * See_Also: `DormDB.rawSQL`
+	 */
+	RawSQLIterator rawSQL(
+		scope return const(char)[] queryString,
+		scope return ffi.FFIValue[] bindParams = null
+	) return pure
+	{
+		return RawSQLIterator(db, txHandle, queryString, bindParams);
+	}
+
+	/**
+	 * Returns a builder struct that can be used to perform an update statement
+	 * in the SQL database on the provided Model table.
+	 *
+	 * See_Also: `DormDB.update`
+	 */
+	UpdateOperation!T update(T : Model)() return pure
+	{
+		return UpdateOperation!T(db, txHandle);
 	}
 }
 
@@ -1331,6 +1380,85 @@ private struct JoinInformation
 	private JoinSuppl[] joinSuppl;
 	/// Lookup foreign key name -> array index
 	private size_t[string] joinedTables;
+}
+
+// TODO: extend docs here
+/**
+ * This is the builder struct that's used for update operations.
+ *
+ * Don't construct this struct manually, use the db.update or tx.update method
+ * to create this struct.
+ */
+struct UpdateOperation(
+	T : Model,
+	bool hasWhere = false,
+)
+{
+@safe:
+	private const(DormDB)* db;
+	private ffi.DBTransactionHandle tx;
+	private ffi.FFICondition[] conditionTree;
+	private JoinInformation joinInformation;
+
+	// TODO: might be copyable
+	@disable this(this);
+
+	static if (!hasWhere)
+	{
+		/// Argument to `condition`. Callback that takes in a
+		/// `ConditionBuilder!T` and returns a `Condition` that can easily be
+		/// created using that builder.
+		alias ConditionBuilderCallback = Condition delegate(ConditionBuilder!T);
+
+		/// Limits the update to only rows matching this condition. Maps to the
+		/// `WHERE` clause in an SQL statement.
+		///
+		/// This method may only be called once on each query.
+		///
+		/// See `ConditionBuilder` to see how the callback-based overload is
+		/// implemented. Basically the argument that is passed to the callback
+		/// is a virtual type that mirrors all the DB-related types from the
+		/// Model class, on which operations such as `.equals` or `.like` can
+		/// be called to generate conditions.
+		///
+		/// Use the `Condition.and(...)`, `Condition.or(...)` or `Condition.not(...)`
+		/// methods to combine conditions into more complex ones. You can also
+		/// choose to not use the builder object at all and integrate manually
+		/// constructed
+		UpdateOperation!(T, true) condition(
+			ConditionBuilderCallback callback
+		) return @trusted
+		{
+			scope ConditionBuilderData data;
+			scope ConditionBuilder!T builder;
+			builder.builderData = &data;
+			data.joinInformation = move(joinInformation);
+			conditionTree = callback(builder).makeTree;
+			joinInformation = move(data.joinInformation);
+			return cast(typeof(return))move(this);
+		}
+	}
+
+	void set(alias field)(TypeOfField!(T, field) value)
+	if (is(typeof(TypeOfField!(T, field))))
+	{
+		// TODO: add to update fields
+	}
+
+	void set(TPatch)(TPatch patch)
+	if (isSomePatch!TPatch)
+	{
+		mixin ValidatePatch!(TPatch, T);
+
+		// TODO: set all patch fields
+	}
+
+	/// Starts the update procedure and waits for the result. Throws in case of
+	/// an error.
+	void await()
+	{
+		rorm_db_update();
+	}
 }
 
 // TODO: extend docs here
