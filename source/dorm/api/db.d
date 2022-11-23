@@ -725,6 +725,21 @@ struct ConditionBuilder(T)
 	mixin DynamicMissingMemberErrorHelper!"condition field";
 }
 
+/// This is the type of the variable that is passed into the `orderBy` callback
+/// at runtime on the `SelectOperation` struct. It automatically mirrors all
+/// DORM fields that are defined on the passed-in `T` Model class.
+///
+/// Fields can be accessed with the same name they were defined in the Model
+/// class. Embedded structs will only use the deepest variable name, e.g. a
+/// nested field of name `userCommon.username` will only need to be accessed
+/// using `username`. Duplicate / shadowing members is not implemented and will
+/// be unable to use the builder on them.
+///
+/// On the columns you can either use `.asc` to sort ascending or `.desc` to
+/// sort descending by the column.
+///
+/// When mistyping names, an expressive error message is printed as compile
+/// time output, showing all possible members for convenience.
 struct OrderBuilder(T)
 {
 	private ConditionBuilderData* builderData;
@@ -757,6 +772,24 @@ struct OrderBuilder(T)
 	mixin DynamicMissingMemberErrorHelper!"order field";
 }
 
+/// This is the type of the variable that is passed into the `populate` callback
+/// at runtime on the `SelectOperation` struct. It automatically mirrors all
+/// DORM fields that are defined on the passed-in `T` Model class.
+///
+/// Fields can be accessed with the same name they were defined in the Model
+/// class. Embedded structs will only use the deepest variable name, e.g. a
+/// nested field of name `userCommon.username` will only need to be accessed
+/// using `username`. Duplicate / shadowing members is not implemented and will
+/// be unable to use the builder on them.
+///
+/// On the column you currently just need to write `.yes` after the column to
+/// actually include it. This is a limitation because otherwise it wouldn't be
+/// possible to populate both reference columns directly or references of
+/// references. e.g. populating both `model.author` and `model.author.friends`
+/// can be done by doing `model.author.yes` and `model.author.friends.yes`
+///
+/// When mistyping names, an expressive error message is printed as compile
+/// time output, showing all possible members for convenience.
 struct PopulateBuilder(T)
 {
 	private ConditionBuilderData* builderData;
@@ -765,7 +798,7 @@ struct PopulateBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("PopulateRefBuilder!(typeof(T.", field.sourceColumn, "), field, DormLayout!T.tableName) ",
+			mixin("PopulateBuilderField!(typeof(T.", field.sourceColumn, "), field, DormLayout!T.tableName) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { return typeof(return)(builderData); }");
 		}
@@ -936,6 +969,12 @@ private mixin template ForeignJoinHelper()
 ///
 /// Just like `ConditionBuilder` this automatically mirrors all DORM fields of
 /// the _foreign_ table, i.e. the referenced model type.
+///
+/// This type is returned by the `ConditionBuilder`. It does not define any
+/// members itself, it only defines all members of the referenced Model to be
+/// accessible. When operating on the primary key that is referenced to from the
+/// ModelRef foreign key, no join operation will be enforced, as the data is
+/// stored entirely in the table with the foreign key.
 struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
 {
 	alias RefDB = ModelRef.TModel;
@@ -968,6 +1007,18 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, stri
 	);
 }
 
+/// Helper type to access sub-fields through `ModelRef` foreign key fields. Will
+/// join the foreign model table automatically if using any fields on there,
+/// other than the primary key, which can be read directly from the source.
+///
+/// Just like `OrderBuilder` this automatically mirrors all DORM fields of
+/// the _foreign_ table, i.e. the referenced model type.
+///
+/// This type is returned by the `OrderBuilder`. It does not define any members
+/// itself, it only defines all members of the referenced Model to be
+/// accessible. When operating on the primary key that is referenced to from the
+/// ModelRef foreign key, no join operation will be enforced, as the data is
+/// stored entirely in the table with the foreign key.
 struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
 {
 	alias RefDB = ModelRef.TModel;
@@ -1000,12 +1051,25 @@ struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field, string s
 	);
 }
 
+/// Internal structure returned by the `PopulateBuilder`, which is passed to
+/// user code from the `populate` method on a `SelectOperation`. Internally this
+/// works by setting the `include` flag on the internal join info structure that
+/// either already exists because of previous condition or ordering operations
+/// or generates the join info structure on-demand.
+///
+/// Do not create this struct manually, only use the `PopulateBuilderField` that
+/// is passed to you as parameter through the `populate` function on the
+/// `SelectOperation` struct, which is returned by `db.select` or `tx.select`.
 struct PopulateRef
 {
+	/// Internal index inside the JoinInfo array that is stored on the
+	/// `SelectBuilder`. Do not modify manually, you should only use the
+	/// `populate` function on `SelectOperation` to generate this.
 	size_t idx;
 }
 
-struct PopulateRefBuilder(ModelRef, ModelFormat.Field field, string srcTableName)
+/// Helper struct
+struct PopulateBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
 {
 	alias RefDB = ModelRef.TModel;
 
@@ -1021,7 +1085,7 @@ struct PopulateRefBuilder(ModelRef, ModelFormat.Field field, string srcTableName
 
 	mixin DynamicMissingMemberErrorHelper!(
 		"populate field",
-		"`PopulateRefBuilder` on " ~ RefDB.stringof ~ "." ~ field.sourceColumn
+		"`PopulateBuilderField` on " ~ RefDB.stringof ~ "." ~ field.sourceColumn
 	);
 }
 
