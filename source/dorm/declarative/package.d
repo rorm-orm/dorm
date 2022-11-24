@@ -286,17 +286,27 @@ struct ModelFormat
 	{
 		string errors;
 
+		bool hasPrimary;
 		// https://github.com/myOmikron/drorm/issues/7
 		Field[] autoIncrementFields;
 		foreach (field; fields)
+		{
 			if (field.hasFlag(AnnotationFlag.autoIncrement))
 				autoIncrementFields ~= field;
+			if (field.hasFlag(AnnotationFlag.primaryKey))
+				hasPrimary = true;
+		}
+
 		if (autoIncrementFields.length > 1)
 		{
 			errors ~= errorPrefix ~ "Multiple fields with @autoIncrement defined, only one is allowed:";
 			foreach (field; autoIncrementFields)
 				errors ~= errorPrefix ~ "\t" ~ field.sourceReferenceName(tableName);
 		}
+
+		if (!hasPrimary)
+			errors ~= errorPrefix ~ "No primary key defined on this model. Consider adding a simple auto-increment integer:"
+				~ errorPrefix ~ "\t`@Id long id;`";
 
 		return errors;
 	}
@@ -333,7 +343,7 @@ struct SourceLocation
 	/// Same as toString, but bolds the string using ANSI escape codes
 	string toErrorString() const @safe
 	{
-		return "\x1B[1m" ~ toString ~ ": \x1B[1;31mError: \x1B[m";
+		return "\x1B[1m" ~ toString ~ ": \x1B[1;31mError: (DORM)\x1B[m";
 	}
 }
 

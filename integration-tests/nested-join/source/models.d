@@ -16,6 +16,7 @@ class User : Model
 
 class Toot : Model
 {
+	@Id long id;
 	@maxLength(2048)
 	string message;
 	@autoCreateTime
@@ -25,6 +26,7 @@ class Toot : Model
 
 class Reply : Model
 {
+	@Id long id;
 	ModelRef!Toot replyTo;
 
 	@maxLength(255)

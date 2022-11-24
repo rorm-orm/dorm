@@ -82,7 +82,8 @@ private enum DormLayoutImpl(TModel : Model) = function() {
 		}
 	}
 
-	errors ~= serialized.lint("\n\t");
+	static if (!__traits(isAbstractClass, TModel))
+		errors ~= serialized.lint("\n\t");
 
 	struct Ret
 	{
@@ -97,7 +98,8 @@ template DormLayout(TModel : Model)
 {
 	private enum Impl = DormLayoutImpl!TModel;
 	static if (Impl.errors.length)
-		static assert(false, "Model Definition contains errors:" ~ Impl.errors);
+		static assert(false, "Model Definition of `"
+			~ TModel.stringof ~ "` contains errors:" ~ Impl.errors);
 	else
 		enum ModelFormat DormLayout = Impl.ret;
 }
@@ -244,21 +246,16 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		{
 			nullable = true;
 			field.annotations ~= DBAnnotation(AnnotationFlag.primaryKey);
-			if (!field.isBuiltinId)
-			{
-				if (serialized.fields[0].isBuiltinId)
-					serialized.fields = serialized.fields[1 .. $];
 
-				foreach (other; serialized.fields)
-				{
-					if (other.isPrimaryKey)
-						throw new Exception("Duplicate primary key found in Model " ~ TModel.stringof
-							~ ":\n- first defined here:\n"
-							~ other.sourceColumn ~ " in " ~ other.definedAt.toString
-							~ "\n- then attempted to redefine here:\n"
-							~ typeof(fieldAlias).stringof ~ " " ~ fieldName ~ " in " ~ field.definedAt.toString
-							~ "\nMaybe you wanted to define a `TODO: compositeKey`?");
-				}
+			foreach (other; serialized.fields)
+			{
+				if (other.isPrimaryKey)
+					throw new Exception("Duplicate primary key found in Model " ~ TModel.stringof
+						~ ":\n- first defined here:\n"
+						~ other.sourceColumn ~ " in " ~ other.definedAt.toString
+						~ "\n- then attempted to redefine here:\n"
+						~ typeof(fieldAlias).stringof ~ " " ~ fieldName ~ " in " ~ field.definedAt.toString
+						~ "\nMaybe you wanted to define a `TODO: compositeKey`?");
 			}
 		}
 		else static if (__traits(isSame, attribute, uda.autoIncrement))
@@ -747,6 +744,8 @@ unittest
 	{
 		abstract class NamedThing : Model
 		{
+			@Id long id;
+
 			@maxLength(255)
 			string name;
 		}
@@ -762,7 +761,6 @@ unittest
 
 	auto m = mod.models[0];
 	assert(m.tableName == "user");
-	// As Model also adds the id field, length is 3
 	assert(m.fields.length == 3);
 	assert(m.fields[0].columnName == "id");
 	assert(m.fields[1].columnName == "name");
@@ -787,6 +785,8 @@ unittest
 
 		class NamedThing : Model
 		{
+			@Id long id;
+
 			@embedded
 			Common common;
 
@@ -799,7 +799,6 @@ unittest
 	assert(mod.models.length == 1);
 	auto m = mod.models[0];
 	assert(m.tableName == "named_thing");
-	// As Model also adds the id field, length is 3
 	assert(m.fields.length == 4);
 	assert(m.fields[1].columnName == "common_name");
 	assert(m.fields[1].sourceColumn == "common.commonName");
@@ -817,6 +816,8 @@ unittest
 	{
 		class NamedThing : Model
 		{
+			@Id long id;
+
 			@timestamp
 			Nullable!long timestamp1;
 
@@ -835,7 +836,6 @@ unittest
 	assert(mod.models.length == 1);
 	auto m = mod.models[0];
 	assert(m.tableName == "named_thing");
-	// As Model also adds the id field, length is 5
 	assert(m.fields.length == 5);
 
 	assert(m.fields[1].columnName == "timestamp_1");
@@ -851,6 +851,8 @@ unittest
 	{
 		class DefaultValues : Model
 		{
+			@Id long id;
+
 			@defaultValue(10)
 			int f1;
 
@@ -865,7 +867,6 @@ unittest
 	auto mod = processModelsToDeclarations!Mod;
 	assert(mod.models.length == 1);
 	auto m = mod.models[0];
-	// As Model also adds the id field
 	assert(m.fields.length == 4);
 
 	assert(m.fields[1].columnName == "f_1");
@@ -899,6 +900,8 @@ unittest
 
 		class Toot : Model
 		{
+			@Id long id;
+
 			ModelRef!(User.username) author;
 		}
 	}
@@ -909,7 +912,6 @@ unittest
 	auto mod = processModelsToDeclarations!Mod;
 	assert(mod.models.length == 2);
 	auto m = mod.models[0];
-	// @primaryKey overrides built-in ID field
 	assert(m.fields.length == 1);
 
 	assert(m.fields[0].columnName == "username");
@@ -919,7 +921,6 @@ unittest
 	]);
 
 	m = mod.models[1];
-	// contains auto-generated ID field
 	assert(m.fields.length == 2);
 
 	assert(m.fields[1].columnName == "author");

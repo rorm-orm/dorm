@@ -16,6 +16,7 @@ class User : Model
 
 class Toot : Model
 {
+	@Id long id;
 	@maxLength(2048)
 	string message;
 	@autoCreateTime
@@ -32,6 +33,8 @@ struct UserPublic
 
 class Comment : Model
 {
+	@Id long id;
+
 	struct Fields
 	{
 		ModelRef!Toot replyTo;

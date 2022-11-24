@@ -6,6 +6,8 @@ mixin RegisterModels;
 
 class User : Model
 {
+	@Id long id;
+
 	@maxLength(255)
 	string username;
 

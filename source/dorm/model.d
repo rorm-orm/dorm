@@ -15,9 +15,7 @@ import std.traits;
 
 /**
  * Base Model class for all user-defined DORM Models. This implements running
- * value constructors and validators as well as defining an optional default id
- * field. The default id field is only used / available as getter/setter if
- * there is no other `@Id` or `@primaryKey` field on the Model class.
+ * value constructors and validators.
  *
  * This is only checked at compile time using the `this This` template type, so
  * only blocking invalid usage when calling it on an actual instance of the
@@ -26,19 +24,6 @@ import std.traits;
  */
 abstract class Model
 {
-    /// Auto-included ID field that's assigned on every model. May be overriden
-    /// by simply defining a custom `@Id` or `@primaryKey` annotated field.
-    @Id @columnName("id")
-    public long _fallbackId;
-
-    /// Gets or sets the builtin id, only available on Model classes that don't
-    /// define a custom `@Id` or `@primaryKey` field.
-    public ref inout(long) id(this This)() inout @property @safe nothrow @nogc pure
-    if (!is(This == Model) && DormFields!This[0].isBuiltinId)
-    {
-        return _fallbackId;
-    }
-
     /// Default constructor. Runs value constructors. (`@constructValue` UDAs)
     this(this This)()
     {

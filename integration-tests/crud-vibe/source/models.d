@@ -14,6 +14,8 @@ struct AuthInfo {
 
 class User : Model
 {
+	@Id long id;
+
 	struct Fields
 	{
 		@defaultFromInit
