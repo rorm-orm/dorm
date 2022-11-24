@@ -86,7 +86,6 @@ struct DormDB
 	 */
 	this(DBConnectOptions options) @trusted
 	{
-		// TODO: think of how to make async waiting configurable, right now the thread is just blocked
 		auto ffiOptions = options.ffiInto!(ffi.DBConnectOptions);
 
 		scope dbHandleAsync = FreeableAsyncResult!(ffi.DBHandle).make;
@@ -2265,7 +2264,7 @@ private struct RormStream(T, TSelect)
 			res.error = error.makeException;
 		else
 			res.raw_result = result;
-		res.event.set();
+		res.awaiter.set();
 	}
 
 	private ffi.DBStreamHandle handle;
@@ -2284,7 +2283,7 @@ private struct RormStream(T, TSelect)
 	{
 		if (started)
 		{
-			currentHandle.impl.event.wait();
+			currentHandle.impl.waitAndThrow();
 			if (currentHandle.impl.raw_result !is null)
 				ffi.rorm_row_free(currentHandle.impl.raw_result);
 			ffi.rorm_stream_free(handle);
@@ -2295,7 +2294,17 @@ private struct RormStream(T, TSelect)
 
 	/// Helper to `foreach` over this entire stream using the row mapped to
 	/// `TSelect`.
-	int opApply(scope int delegate(TSelect) dg)
+	int opApply(scope int delegate(TSelect) @system dg) @system
+	{
+		return opApplyImpl(cast(int delegate(TSelect) @safe) dg);
+	}
+	/// ditto
+	int opApply(scope int delegate(TSelect) @safe dg) @safe
+	{
+		return opApplyImpl(dg);
+	}
+	/// ditto
+	int opApplyImpl(scope int delegate(TSelect) @safe dg) @safe
 	{
 		int result = 0;
 		for (; !this.empty; this.popFront())
@@ -2309,7 +2318,17 @@ private struct RormStream(T, TSelect)
 
 	/// Helper to `foreach` over this entire stream using an index (simply
 	/// counting up from 0 in D code) and the row mapped to `TSelect`.
-	int opApply(scope int delegate(size_t i, TSelect) dg)
+	int opApply(scope int delegate(size_t i, TSelect) @system dg) @system
+	{
+		return opApplyImpl(cast(int delegate(size_t i, TSelect) @safe) dg);
+	}
+	/// ditto
+	int opApply(scope int delegate(size_t i, TSelect) @safe dg) @safe
+	{
+		return opApplyImpl(dg);
+	}
+	/// ditto
+	int opApplyImpl(scope int delegate(size_t i, TSelect) @safe dg) @safe
 	{
 		int result = 0;
 		size_t i;
@@ -2337,7 +2356,7 @@ private struct RormStream(T, TSelect)
 	bool empty() @trusted
 	{
 		if (!started) nextIteration();
-		currentHandle.impl.event.wait();
+		currentHandle.impl.waitAndThrow();
 		return currentHandle.done;
 	}
 
@@ -2347,7 +2366,7 @@ private struct RormStream(T, TSelect)
 	void popFront() @trusted
 	{
 		if (!started) nextIteration();
-		currentHandle.impl.event.wait();
+		currentHandle.impl.waitAndThrow();
 		if (currentHandle.done)
 			throw new Exception("attempted to run popFront on ended stream");
 		else if (currentHandle.impl.error)
@@ -2689,7 +2708,7 @@ mixin template SetupDormRuntime(alias timeout = 10.seconds)
 {
 	__gshared bool _initializedDormRuntime;
 
-	shared static this()
+	shared static this() @trusted
 	{
 		import dorm.lib.util : sync_call;
 		import dorm.lib.ffi : rorm_runtime_start;
@@ -2698,7 +2717,7 @@ mixin template SetupDormRuntime(alias timeout = 10.seconds)
 		_initializedDormRuntime = true;
 	}
 
-	shared static ~this()
+	shared static ~this() @trusted
 	{
 		import core.time : Duration;
 		import dorm.lib.util;

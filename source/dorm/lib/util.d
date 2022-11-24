@@ -8,9 +8,56 @@ import std.typecons;
 
 import dorm.lib.ffi;
 
+/// Library-agnostic helper that's basically an Event. Exposes
+/// - `set`
+/// - `wait`
+/// - `reset`
+struct Awaiter
+{
+	version (Have_vibe_core)
+	{
+		import vibe.core.sync;
+
+		shared(ManualEvent) event;
+		int emitCount;
+
+		void set() nothrow
+		{
+			event.emit();
+		}
+
+		void wait() nothrow
+		{
+			event.waitUninterruptible(emitCount);
+		}
+
+		void reset() nothrow @safe
+		{
+			emitCount = event.emitCount;
+		}
+
+		static Awaiter make() @trusted
+		{
+			auto ret = Awaiter(createSharedManualEvent);
+			ret.emitCount = ret.event.emitCount;
+			return ret;
+		}
+	}
+	else
+	{
+		Event event;
+		alias event this;
+
+		static Awaiter make() @trusted
+		{
+			return Awaiter(Event(true, false));
+		}
+	}
+}
+
 struct FreeableAsyncResult(T)
 {
-	Event event;
+	Awaiter awaiter;
 	static if (is(T : void delegate(scope U value), U))
 		T forward_callback;
 	else static if (!is(T == void))
@@ -19,14 +66,14 @@ struct FreeableAsyncResult(T)
 
 	@disable this();
 
-	this(Event event) @trusted
+	this(Awaiter awaiter) @trusted
 	{
-		this.event = move(event);
+		this.awaiter = move(awaiter);
 	}
 
 	static FreeableAsyncResult make() @trusted
 	{
-		return FreeableAsyncResult(Event(true, false));
+		return FreeableAsyncResult(Awaiter.make);
 	}
 
 	static if (is(T == void))
@@ -49,7 +96,7 @@ struct FreeableAsyncResult(T)
 				auto res = cast(FreeableAsyncResult*)data;
 				if (error)
 					res.error = error.makeException;
-				res.event.set();
+				res.awaiter.set();
 			}
 		}
 		else static if (is(T : void delegate(scope U value), U))
@@ -73,7 +120,7 @@ struct FreeableAsyncResult(T)
 						res.error = e;
 					}
 				}
-				res.event.set();
+				res.awaiter.set();
 			}
 		}
 		else
@@ -88,18 +135,23 @@ struct FreeableAsyncResult(T)
 					res.error = error.makeException;
 				else
 					res.raw_result = result;
-				res.event.set();
+				res.awaiter.set();
 			}
 		}
 
 		return tuple(&ret, cast(void*)&this);
 	}
 
-	auto result() @safe
+	void waitAndThrow() @trusted
 	{
-		(() @trusted => event.wait())();
+		awaiter.wait();
 		if (error)
 			throw error;
+	}
+
+	auto result() @safe
+	{
+		waitAndThrow();
 		static if (!is(T == void)
 			&& !is(T : void delegate(scope U value), U))
 			return raw_result;
@@ -107,7 +159,7 @@ struct FreeableAsyncResult(T)
 
 	void reset() @safe
 	{
-		(() @trusted => event.reset())();
+		(() @trusted => awaiter.reset())();
 		static if (!is(T == void)
 			&& !is(T : void delegate(scope U value), U))
 			raw_result = T.init;

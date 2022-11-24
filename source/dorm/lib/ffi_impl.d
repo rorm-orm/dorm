@@ -1357,7 +1357,7 @@ version (unittest)
 			res.error = error.makeException;
 		else
 			res.raw_result = result;
-		res.event.set();
+		res.awaiter.set();
 	}
 }
 

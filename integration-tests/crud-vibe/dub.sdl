@@ -1,0 +1,5 @@
+name "crud-vibe"
+
+dependency "vibe-core" version="~>1.22.5"
+dependency "dorm" path="../.."
+dependency "dorm:build-models" path="../.."
