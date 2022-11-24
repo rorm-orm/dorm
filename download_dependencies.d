@@ -130,6 +130,9 @@ bool downloadTool(string name, string output, TargetPlatform target, bool requir
 				fs.rename(unverifiedOutput, output ~ target.archiveExtension);
 				extractAndDelete(output ~ target.archiveExtension);
 				markExecutable(output);
+				foreach (del; target.forbiddenFiles)
+					if (fs.exists(del))
+						fs.remove(del);
 				return true;
 			}
 		}
@@ -233,6 +236,20 @@ struct TargetPlatform
 			return "rorm-cli.exe";
 		else
 			throw new Exception("unsupported platform for cliname");
+	}
+
+	/// Files that are auto-deleted after download if they exist
+	string[] forbiddenFiles() const @property
+	{
+		// list of forbidden files for this platform
+		if (platforms.canFind("linux"))
+			return ["librorm.so"];
+		else if (platforms.canFind("osx"))
+			return ["librorm.dylib"];
+		else if (platforms.canFind("windows"))
+			return ["rorm.dll"];
+		else
+			throw new Exception("unsupported platform for libname");
 	}
 }
 
