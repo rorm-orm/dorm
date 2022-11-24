@@ -1,6 +1,7 @@
 # DORM
 
 ![License](https://img.shields.io/github/license/rorm-orm/dorm?label=License)
+[![Integration Tests](https://img.shields.io/github/workflow/status/rorm-orm/dorm/Integration%20Tests)](https://github.com/rorm-orm/dorm/actions/workflows/ci.yml)
 
 A sophisticated D ORM using [rorm-lib](https://github.com/rorm-orm/rorm-lib) as a backend.
 
