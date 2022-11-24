@@ -50,8 +50,8 @@ jobs:
 
       - name: Build testapp
         run: dub build
-        working-directory: ./testapp
+        working-directory: testapp
 
       - name: Run integration tests
         run: ./run.sh
-        working-directory: ./integration-tests
+        working-directory: integration-tests
