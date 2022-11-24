@@ -36,6 +36,7 @@ jobs:
           python3 .github/sonar_to_sarif.py -i report.json -o report.sarif --git ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
 
       - name: Upload dscanner analysis results to GitHub
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.compiler == 'dmd-latest' }}
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: report.sarif
