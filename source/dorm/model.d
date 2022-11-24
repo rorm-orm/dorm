@@ -33,7 +33,7 @@ abstract class Model
 
     /// Gets or sets the builtin id, only available on Model classes that don't
     /// define a custom `@Id` or `@primaryKey` field.
-    public ref long id(this This)() const @property @safe nothrow @nogc pure
+    public ref inout(long) id(this This)() inout @property @safe nothrow @nogc pure
     if (!is(This == Model) && DormFields!This[0].isBuiltinId)
     {
         return _fallbackId;
