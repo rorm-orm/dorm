@@ -3,7 +3,8 @@ name "build-models"
 targetType "sourceLibrary"
 
 configuration "application" {
-	postBuildCommands "./$DUB_ROOT_PACKAGE_TARGET_PATH$DUB_ROOT_PACKAGE_TARGET_NAME --DORM-dump-models-json"
+	postBuildCommands ".\\$DUB_ROOT_PACKAGE_TARGET_PATH$DUB_ROOT_PACKAGE_TARGET_NAME --DORM-dump-models-json" platform="windows"
+	postBuildCommands "./$DUB_ROOT_PACKAGE_TARGET_PATH$DUB_ROOT_PACKAGE_TARGET_NAME --DORM-dump-models-json" platform="posix"
 	versions "DormBuildModels"
 }
 
