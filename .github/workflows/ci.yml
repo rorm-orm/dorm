@@ -13,6 +13,7 @@ jobs:
     name: Build DORM and run tests
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
         compiler:
@@ -28,6 +29,7 @@ jobs:
           compiler: ${{ matrix.compiler }}
 
       - name: Lint dorm with dscanner
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.compiler == 'dmd-latest' }}
         run: |
           dub run dscanner -- --report --reportFile=report.json --reportFormat=sonarQubeGenericIssueData
           wc -l report.json
