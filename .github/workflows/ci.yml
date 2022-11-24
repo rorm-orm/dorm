@@ -1,4 +1,4 @@
-name: Build & Test for Linux
+name: Integration Tests
 on:
   push:
     paths-ignore:
