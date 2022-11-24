@@ -16,7 +16,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
         compiler:
-          - dmd-2.101.0
+          - dmd-latest
+          - ldc-latest
     steps:
       - uses: actions/checkout@v3
         with:
