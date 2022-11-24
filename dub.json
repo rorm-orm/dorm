@@ -25,7 +25,7 @@
 		"-framework", "SystemConfiguration",
 		"-framework", "SecurityFoundation"
 	],
-	"lflags-windows": ["/DEFAULTLIB:MSVCRT", "/NODEFAULTLIB:libcmt"],
+	"lflags-windows": ["/DEFAULTLIB:MSVCRT", "/NODEFAULTLIB:libcmt", "/LIBPATH:$PACKAGE_DIR"],
 	"libs-windows": ["Ws2_32", "ntdll", "ucrt", "Bcrypt", "Userenv", "Ole32"],
 	"description": "A D ORM.",
 	"dflags": [
