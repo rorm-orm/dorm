@@ -135,4 +135,12 @@ void main()
 	}
 
 	assert(total == 2);
+
+	auto nonExist = db.select!User.condition(u => u.name.like("nonexist%")).findOptional;
+	assert(nonExist.isNull);
+	auto optionalAlice = db.select!User.condition(u => u.name.like("alice%")).findOptional;
+	assert(!optionalAlice.isNull);
+
+	assertThrown(db.select!User.condition(u => u.name.like("nonexist%")).findOne);
+	auto assumedAlice = db.select!User.condition(u => u.name.like("alice%")).findOne;
 }
