@@ -1,0 +1,53 @@
+name: Build & Test for Linux
+on:
+  push:
+    paths-ignore:
+      - "*.md"
+  pull_request:
+
+env:
+  DFLAGS: "-lowmem"
+
+jobs:
+  run-tests:
+    name: Build DORM and run tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        compiler:
+          - dmd-2.101.0
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Lint dorm with dscanner
+        run: |
+          dub run dscanner -- --report --reportFile=report.json --reportFormat=sonarQubeGenericIssueData
+          wc -l report.json
+          python3 .github/sonar_to_sarif.py -i report.json -o report.sarif --git ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
+
+      - name: Upload dscanner analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: report.sarif
+          wait-for-processing: true
+
+      - name: Build dorm
+        run: dub build
+
+      - name: Test dorm
+        run: dub test
+
+      - name: Build testapp
+        run: dub build
+        working-directory: ./testapp
+
+      - name: Run integration tests
+        run: ./run.sh
+        working-directory: ./integration-tests
