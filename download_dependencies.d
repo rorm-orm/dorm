@@ -82,6 +82,10 @@ bool downloadTool(string name, string output, TargetPlatform target, bool requir
 	MapLine[] foundLines;
 	foreach (line; File("download-map.txt", "r").byLine)
 	{
+		line = line.strip;
+		if (!line.length)
+			continue;
+
 		if (line.startsWith("# " ~ name))
 			inSection = true;
 		else if (line.startsWith("#"))
