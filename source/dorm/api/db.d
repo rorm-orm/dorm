@@ -798,9 +798,9 @@ struct ConditionBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("ForeignModelConditionBuilderField!(typeof(T.", field.sourceColumn, "), field, DormLayout!T.tableName) ",
+			mixin("ForeignModelConditionBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
-				"() @property return { return typeof(return)(builderData); }");
+				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
 		else
 		{
@@ -850,9 +850,9 @@ struct OrderBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("ForeignModelOrderBuilderField!(typeof(T.", field.sourceColumn, "), field, DormLayout!T.tableName) ",
+			mixin("ForeignModelOrderBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
-				"() @property return { return typeof(return)(builderData); }");
+				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
 		else
 		{
@@ -900,9 +900,9 @@ struct PopulateBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("PopulateBuilderField!(typeof(T.", field.sourceColumn, "), field, DormLayout!T.tableName) ",
+			mixin("PopulateBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
-				"() @property return { return typeof(return)(builderData); }");
+				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
 	}
 
@@ -1042,22 +1042,24 @@ private Condition* makeConditionConstant(ModelFormat.Field fieldInfo, T)(T value
 
 private mixin template ForeignJoinHelper()
 {
-	private ConditionBuilderData* data;
+	private string srcTableName;
+	private ConditionBuilderData* builderData;
 
 	/// Constructs this ForeignModelConditionBuilderField, operating on the given data pointer during its lifetime
-	this(ConditionBuilderData* data) @safe
+	this(string srcTableName, ConditionBuilderData* builderData) @safe
 	{
-		this.data = data;
+		this.srcTableName = srcTableName;
+		this.builderData = builderData;
 	}
 
 	private string ensureJoined() @safe
 	{
-		return data.joinInformation.joinSuppl[ensureJoinedIdx].placeholder;
+		return builderData.joinInformation.joinSuppl[ensureJoinedIdx].placeholder;
 	}
 
 	private size_t ensureJoinedIdx() @trusted
 	{
-		auto ji = &data.joinInformation;
+		auto ji = &builderData.joinInformation;
 		string fkName = field.columnName;
 		auto exist = fkName in ji.joinedTables;
 		if (exist)
@@ -1111,7 +1113,7 @@ private mixin template ForeignJoinHelper()
 /// accessible. When operating on the primary key that is referenced to from the
 /// ModelRef foreign key, no join operation will be enforced, as the data is
 /// stored entirely in the table with the foreign key.
-struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
+struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
 
@@ -1123,9 +1125,14 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, stri
 		{
 			mixin("ConditionBuilderField!(ModelRef.PrimaryKeyType, field) ",
 				field.sourceColumn.lastIdentifier,
-				" = ConditionBuilderField!(ModelRef.PrimaryKeyType, field)(`",
-				srcTableName, "`, `", field.columnName,
-				"`);");
+				"() @property @safe return { return ConditionBuilderField!(ModelRef.PrimaryKeyType, field)(srcTableName, `",
+				field.columnName, "`); }");
+		}
+		else static if (field.isForeignKey)
+		{
+			mixin("ForeignModelConditionBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+				field.sourceColumn.lastIdentifier,
+				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
 		else
 		{
@@ -1155,7 +1162,7 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field, stri
 /// accessible. When operating on the primary key that is referenced to from the
 /// ModelRef foreign key, no join operation will be enforced, as the data is
 /// stored entirely in the table with the foreign key.
-struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
+struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
 
@@ -1167,9 +1174,14 @@ struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field, string s
 		{
 			mixin("OrderBuilderField!(ModelRef.PrimaryKeyType, field) ",
 				field.sourceColumn.lastIdentifier,
-				" = OrderBuilderField!(ModelRef.PrimaryKeyType, field)(`",
-				srcTableName, "`, `", field.columnName,
-				"`);");
+				"() @property @safe return { return OrderBuilderField!(ModelRef.PrimaryKeyType, field)(srcTableName, `",
+				field.columnName, "`); }");
+		}
+		else static if (field.isForeignKey)
+		{
+			mixin("ForeignModelOrderBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+				field.sourceColumn.lastIdentifier,
+				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
 		else
 		{
@@ -1205,7 +1217,7 @@ struct PopulateRef
 }
 
 /// Helper struct
-struct PopulateBuilderField(ModelRef, ModelFormat.Field field, string srcTableName)
+struct PopulateBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
 
@@ -1217,7 +1229,15 @@ struct PopulateBuilderField(ModelRef, ModelFormat.Field field, string srcTableNa
 		return [PopulateRef(ensureJoinedIdx)];
 	}
 
-	// TODO: nested foreign keys
+	static foreach (field; DormFields!RefDB)
+	{
+		static if (field.isForeignKey)
+		{
+			mixin("PopulateBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+				field.sourceColumn.lastIdentifier,
+				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
+		}
+	}
 
 	mixin DisallowOperators!(
 		"`PopulateBuilderField` on " ~ RefDB.stringof ~ "." ~ field.sourceColumn
@@ -1481,7 +1501,6 @@ private struct JoinInformation
 	private size_t[string] joinedTables;
 }
 
-// TODO: extend docs here
 /**
  * This is the builder struct that's used for update operations.
  *
@@ -1769,7 +1788,6 @@ struct RemoveOperation(T : Model)
 	}
 }
 
-// TODO: extend docs here
 /**
  * This is the builder struct that's used for select operations (queries)
  *
