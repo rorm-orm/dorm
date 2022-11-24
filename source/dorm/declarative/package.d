@@ -602,7 +602,7 @@ private struct IonDBAnnotation
 	}
 }
 
-private string toPascalCase(OnUpdateDeleteType type) @safe nothrow @nogc pure
+private string toPascalCase(ReferentialAction type) @safe nothrow @nogc pure
 {
 	final switch (type)
 	{

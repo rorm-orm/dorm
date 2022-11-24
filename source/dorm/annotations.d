@@ -83,11 +83,11 @@ template isDormModelAttribute(alias attr)
 struct ForeignKeyImpl
 {
 	string table, column;
-	OnUpdateDeleteType onUpdate; // TODO: decide on defaults
-	OnUpdateDeleteType onDelete;
+	ReferentialAction onUpdate; // TODO: decide on defaults
+	ReferentialAction onDelete;
 }
 
-enum OnUpdateDeleteType
+enum ReferentialAction
 {
 	restrict,
 	cascade,
@@ -95,17 +95,17 @@ enum OnUpdateDeleteType
 	setDefault
 }
 
-enum restrict = OnUpdateDeleteType.restrict;
-enum cascade = OnUpdateDeleteType.cascade;
-enum setNull = OnUpdateDeleteType.setNull;
-enum setDefault = OnUpdateDeleteType.setDefault;
+enum restrict = ReferentialAction.restrict;
+enum cascade = ReferentialAction.cascade;
+enum setNull = ReferentialAction.setNull;
+enum setDefault = ReferentialAction.setDefault;
 
 struct onUpdate
 {
-	OnUpdateDeleteType type;
+	ReferentialAction type;
 }
 
 struct onDelete
 {
-	OnUpdateDeleteType type;
+	ReferentialAction type;
 }
