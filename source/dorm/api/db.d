@@ -1813,12 +1813,22 @@ struct RemoveOperation(T : Model)
  * Finishing methods you can call on this builder:
  *
  * The following methods can be used to extract the data:
- * - `stream` to asynchronously stream data (can be used as iterator / range)
+ * - `stream` to asynchronously stream data. (can be used as iterator / range)
  * - `array` to eagerly fetch all data and do a big memory allocation to store
  *   all the values into.
  * - `findOne` to find the first matching item or throw for no data.
  * - `findOptional` to find the first matching item or return Nullable!T.init
- *    for no data.
+ *   for no data.
+ *
+ * There are restrictions when `stream`/`array` as well as when
+ * `findOne`/`findOptional` can be used:
+ *
+ * `stream`/`array` are usable when:
+ * - neither `limit` and `offset` are set
+ * - both `limit` and `offset` are set
+ * - only `limit` is set and `offset` is not set
+ *
+ * `findOne`/`findOptional` are only usable when no `limit` is set.
  */
 struct SelectOperation(
 	T,
@@ -1953,17 +1963,23 @@ struct SelectOperation(
 		///
 		/// Start is inclusive, end is exclusive - mimicking how array slicing
 		/// works.
-		size_t[2] opSlice(size_t start, size_t end)
+		ulong[2] opSlice(size_t dim)(ulong start, ulong end)
 		{
 			return [start, end];
 		}
 
 		/// ditto
-		SelectOperation!(T, TSelect, hasWhere, true, true) opIndex(size_t[2] slice) return @trusted
+		SelectOperation!(T, TSelect, hasWhere, true, true) opIndex(ulong[2] slice) return @trusted
 		{
 			this._offset = slice[0];
 			this._limit = cast(long)slice[1] - cast(long)slice[0];
 			return cast(typeof(return))move(this);
+		}
+
+		/// ditto
+		SelectOperation!(T, TSelect, hasWhere, true, true) range(ulong start, ulong endExclusive) return @safe
+		{
+			return this[start .. endExclusive];
 		}
 	}
 
@@ -1980,78 +1996,81 @@ struct SelectOperation(
 		return ret;
 	}
 
-	/// Fetches all result data into one array. Uses the GC to allocate the
-	/// data, so it's not needed to keep track of how long objects live by the
-	/// user.
-	TSelect[] array() @trusted
+	static if (hasLimit || !hasOffset)
 	{
-		enum fields = FilterLayoutFields!(T, TSelect);
+		/// Fetches all result data into one array. Uses the GC to allocate the
+		/// data, so it's not needed to keep track of how long objects live by the
+		/// user.
+		TSelect[] array() @trusted
+		{
+			enum fields = FilterLayoutFields!(T, TSelect);
 
-		ffi.FFIColumnSelector[fields.length] columns;
-		static foreach (i, field; fields)
-		{{
-			enum aliasedName = "__" ~ field.columnName;
+			ffi.FFIColumnSelector[fields.length] columns;
+			static foreach (i, field; fields)
+			{{
+				enum aliasedName = "__" ~ field.columnName;
 
-			columns[i] = ffi.FFIColumnSelector(
+				columns[i] = ffi.FFIColumnSelector(
+					ffi.ffi(DormLayout!T.tableName),
+					ffi.ffi(field.columnName),
+					ffi.ffi(aliasedName)
+				);
+			}}
+
+			mixin(makeRtColumns);
+
+			TSelect[] ret;
+			auto ctx = FreeableAsyncResult!(void delegate(scope ffi.FFIArray!(ffi.DBRowHandle))).make;
+			ctx.forward_callback = (scope rows) {
+				ret.length = rows.size;
+				foreach (i; 0 .. rows.size)
+					ret[i] = unwrapRowResult!(T, TSelect)(rows.data[i], joinInformation);
+			};
+			ffi.rorm_db_query_all(db.handle,
+				tx,
 				ffi.ffi(DormLayout!T.tableName),
-				ffi.ffi(field.columnName),
-				ffi.ffi(aliasedName)
-			);
-		}}
+				ffi.ffi(rtColumns),
+				ffi.ffi(joinInformation.joins),
+				conditionTree.length ? &conditionTree[0] : null,
+				ffi.ffi(ordering),
+				ffiLimit,
+				ctx.callback.expand);
+			ctx.result();
+			return ret;
+		}
 
-		mixin(makeRtColumns);
+		/// Fetches all data into a range that can be iterated over or processed
+		/// with regular range functions. Does not allocate an array to store the
+		/// fetched data in, but may still use sparingly the GC in implementation.
+		auto stream() @trusted
+		{
+			enum fields = FilterLayoutFields!(T, TSelect);
 
-		TSelect[] ret;
-		auto ctx = FreeableAsyncResult!(void delegate(scope ffi.FFIArray!(ffi.DBRowHandle))).make;
-		ctx.forward_callback = (scope rows) {
-			ret.length = rows.size;
-			foreach (i; 0 .. rows.size)
-				ret[i] = unwrapRowResult!(T, TSelect)(rows.data[i], joinInformation);
-		};
-		ffi.rorm_db_query_all(db.handle,
-			tx,
-			ffi.ffi(DormLayout!T.tableName),
-			ffi.ffi(rtColumns),
-			ffi.ffi(joinInformation.joins),
-			conditionTree.length ? &conditionTree[0] : null,
-			ffi.ffi(ordering),
-			ffiLimit,
-			ctx.callback.expand);
-		ctx.result();
-		return ret;
-	}
+			ffi.FFIColumnSelector[fields.length] columns;
+			static foreach (i, field; fields)
+			{{
+				enum aliasedName = "__" ~ field.columnName;
 
-	/// Fetches all data into a range that can be iterated over or processed
-	/// with regular range functions. Does not allocate an array to store the
-	/// fetched data in, but may still use sparingly the GC in implementation.
-	auto stream() @trusted
-	{
-		enum fields = FilterLayoutFields!(T, TSelect);
+				columns[i] = ffi.FFIColumnSelector(
+					ffi.ffi(DormLayout!T.tableName),
+					ffi.ffi(field.columnName),
+					ffi.ffi(aliasedName)
+				);
+			}}
 
-		ffi.FFIColumnSelector[fields.length] columns;
-		static foreach (i, field; fields)
-		{{
-			enum aliasedName = "__" ~ field.columnName;
+			mixin(makeRtColumns);
 
-			columns[i] = ffi.FFIColumnSelector(
+			auto stream = sync_call!(ffi.rorm_db_query_stream)(db.handle,
+				tx,
 				ffi.ffi(DormLayout!T.tableName),
-				ffi.ffi(field.columnName),
-				ffi.ffi(aliasedName)
-			);
-		}}
+				ffi.ffi(rtColumns),
+				ffi.ffi(joinInformation.joins),
+				conditionTree.length ? &conditionTree[0] : null,
+				ffi.ffi(ordering),
+				ffiLimit);
 
-		mixin(makeRtColumns);
-
-		auto stream = sync_call!(ffi.rorm_db_query_stream)(db.handle,
-			tx,
-			ffi.ffi(DormLayout!T.tableName),
-			ffi.ffi(rtColumns),
-			ffi.ffi(joinInformation.joins),
-			conditionTree.length ? &conditionTree[0] : null,
-			ffi.ffi(ordering),
-			ffiLimit);
-
-		return RormStream!(T, TSelect)(stream, joinInformation);
+			return RormStream!(T, TSelect)(stream, joinInformation);
+		}
 	}
 
 	static if (!hasLimit)
