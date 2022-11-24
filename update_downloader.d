@@ -6,6 +6,7 @@ module update_downloader;
 
 import requests;
 
+import fs = std.file;
 import std.algorithm;
 import std.array;
 import std.digest;
@@ -15,12 +16,13 @@ import std.json;
 import std.process;
 import std.stdio;
 import std.string;
-import fs = std.file;
+import std.traits;
 
 enum ArchSuffix
 {
 	linux_x86,
 	osx_x86,
+	osx_aarch64,
 	windows_x86,
 }
 
@@ -41,11 +43,7 @@ void putDownloads(ref Request rq, string url, ref File output)
 {
 	auto rormReleases = rq.get(url).responseBody.toString.parseJSON;
 
-	ArchSuffix[] allSuffixes = [
-		ArchSuffix.linux_x86,
-		ArchSuffix.osx_x86,
-		ArchSuffix.windows_x86
-	];
+	ArchSuffix[] allSuffixes = [EnumMembers!ArchSuffix];
 
 	ArchSuffix[] missingAssetSuffixes = allSuffixes.dup;
 
@@ -100,11 +98,13 @@ bool matchesAsset(string asset, ArchSuffix suffix)
 	final switch (suffix)
 	{
 		case ArchSuffix.linux_x86:
-			return !!asset.endsWith("linux-x86_64.a.tar.gz", "linux-x86_64.tar.gz");
+			return !!asset.endsWith("linux-x86_64.tar.gz");
 		case ArchSuffix.osx_x86:
-			return !!asset.endsWith("osx-x86_64.a.tar.gz", "osx-x86_64.tar.gz");
+			return !!asset.endsWith("apple-x86_64.tar.gz");
+		case ArchSuffix.osx_aarch64:
+			return !!asset.endsWith("apple-aarch64.tar.gz");
 		case ArchSuffix.windows_x86:
-			return !!asset.endsWith("windows-x86_64.lib.zip", "windows-x86_64.exe.zip");
+			return !!asset.endsWith("windows-x86_64.zip");
 	}
 }
 

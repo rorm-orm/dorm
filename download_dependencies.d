@@ -2,12 +2,17 @@ import fs = std.file;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.datetime.stopwatch;
+import std.exception;
 import std.path;
 import std.process;
 import std.stdio;
 import std.string;
+import std.traits;
 
-debug = Verbose;
+// debug = Verbose;
+
+version (Windows) pragma(lib, "wininet");
 
 __gshared bool color;
 
@@ -44,7 +49,6 @@ int main(string[] args)
 		return 0; // already downloaded & validated or manually compiled
 
 	logln("Missing ", platforms.libname.bold, " in dependency ", `"dorm"`.bold, ". Downloading pre-compiled binary from GitHub...");
-	logln("File signatures are not going to be checked, they have however been confirmed to match with the checksums included in dorm.");
 
 	try
 	{
@@ -53,7 +57,7 @@ int main(string[] args)
 			bool hasCLI = downloadTool("rorm-cli", nativePlatform.cliname, nativePlatform, false, "`dub run dorm` will not work properly - download rorm-cli manually!");
 
 			if (!hasCLI)
-				logln("Warning: found no pre-compiled binary for rorm-cli. Running `dub run dorm` will not invoke the CLI.");
+				supplln("> `dub run dorm` will not invoke the CLI!");
 		}
 
 		downloadTool("rorm-lib", platforms.libname, platforms, true, "Please manually compile rorm-lib for this platform.");
@@ -64,14 +68,17 @@ int main(string[] args)
 	}
 	catch (Exception e)
 	{
+		supplln();
 		debug (Verbose)
-			errorln("Failed to download precompiled rorm binaries: ", e.toString);
+			errorln("Failed to download precompiled rorm binaries!\n", whitespacePrefix, e.toString);
 		else
-			errorln("Failed to download precompiled rorm binaries: ", e.msg);
-		logln();
+			errorln("Failed to download precompiled rorm binaries!\n", whitespacePrefix, e.msg);
+		supplln("Expected to find or download '", platforms.libname, "' in '", fs.getcwd, "'");
+		supplln();
 		logln("TIP: you can manually compile rorm-lib to skip the automatic download step");
-		logln("Expected to find or download '", platforms.libname, "' in '", fs.getcwd, "'");
-		logln("DUB target: ", args[1 .. $]);
+		supplln("DUB target: ", args[1 .. $].join(", "));
+		supplln();
+		logln("GitHub: https://github.com/rorm-orm/rorm-lib");
 		return 1;
 	}
 }
@@ -102,10 +109,10 @@ bool downloadTool(string name, string output, TargetPlatform target, bool requir
 	{
 		if (required)
 			throw new Exception("Does not have any precompiled binaries for this platform for " ~ name
-				~ (errorSupplemental.length ? " - " ~ errorSupplemental : ""));
+				~ (errorSupplemental.length ? "\n" ~ whitespacePrefix ~ errorSupplemental : ""));
 		else
 			errorln("Warning: Does not have any precompiled binaries for this platform for " ~ name
-				~ (errorSupplemental.length ? " - " ~ errorSupplemental : ""));
+				~ (errorSupplemental.length ? "\n" ~ whitespacePrefix ~ errorSupplemental : ""));
 		return false;
 	}
 
@@ -233,9 +240,9 @@ TargetPlatform determinePlatforms(string[] archs, string[] platforms)
 	if (archs.canFind("aarch64"))
 	{
 		if (platforms.canFind("osx"))
-			return TargetPlatform.osx(["osx_arm64", "osx_x86"], archs, platforms);
+			return TargetPlatform.osx(["osx_aarch64", "osx_x86"], archs, platforms);
 		else if (platforms.canFind("linux"))
-			return TargetPlatform.linux(["linux_arm64"], archs, platforms);
+			return TargetPlatform.linux(["linux_aarch64"], archs, platforms);
 		else
 			return TargetPlatform.init;
 	}
@@ -257,9 +264,67 @@ TargetPlatform determinePlatforms(string[] archs, string[] platforms)
 void download(string url, string file)
 {
 	logln("Downloading DORM dependency from ", url);
-	auto res = spawnProcess(["wget", url, "-q", "--show-progress", "-U", "[download_dependencies] https://github.com/rorm-orm/dorm", "-O", file]).wait;
-	if (res != 0)
-		throw new Exception("Failed to download " ~ url ~ " to " ~ file);
+	version (Windows)
+	{
+		File file = File(into, "wb");
+
+		StopWatch sw;
+		sw.start();
+
+		import core.sys.windows.windows : DWORD;
+		import core.sys.windows.wininet : INTERNET_FLAG_NO_UI,
+			INTERNET_OPEN_TYPE_PRECONFIG, InternetCloseHandle, InternetOpenA,
+			InternetOpenUrlA, InternetReadFile, IRF_NO_WAIT, INTERNET_BUFFERSA,
+			HttpQueryInfoA, HTTP_QUERY_CONTENT_LENGTH;
+
+		auto handle = enforce(InternetOpenA("[download_dependencies] https://github.com/rorm-orm/dorm",
+				INTERNET_OPEN_TYPE_PRECONFIG, null, null, 0), "Failed to download " ~ url ~ " to " ~ file);
+		scope (exit)
+			InternetCloseHandle(handle);
+
+		auto obj = enforce(InternetOpenUrlA(handle, cast(const(char)*) url.toStringz,
+				null, 0, INTERNET_FLAG_NO_UI, 0), "Failed to download " ~ url ~ " to " ~ file);
+		scope (exit)
+			InternetCloseHandle(obj);
+
+		scope ubyte[] buffer = new ubyte[50 * 1024];
+
+		long maxLen;
+		DWORD contentLengthLength = 16;
+		DWORD index = 0;
+		if (HttpQueryInfoA(obj, HTTP_QUERY_CONTENT_LENGTH, buffer.ptr, &contentLengthLength, &index))
+			maxLen = (cast(char[]) buffer[0 .. contentLengthLength]).strip.to!long;
+
+		long received;
+		while (true)
+		{
+			DWORD read;
+			if (!InternetReadFile(obj, buffer.ptr, cast(DWORD) buffer.length, &read))
+				throw new Exception("Failed to download " ~ url ~ " to " ~ file);
+
+			if (read == 0)
+				break;
+
+			file.rawWrite(buffer[0 .. read]);
+			received += read;
+
+			if (sw.peek >= 1.seconds)
+			{
+				sw.reset();
+				if (maxLen > 0)
+					supplln(format!"%s %s / %s (%.1f %%)"(title, humanSize(received),
+							humanSize(maxLen), received / cast(float) maxLen * 100));
+				else
+					supplln(format!"%s %s / ???"(title, humanSize(received)));
+			}
+		}
+	}
+	else
+	{
+		auto res = spawnProcess(["wget", url, "-q", "--show-progress", "-U", "[download_dependencies] https://github.com/rorm-orm/dorm", "-O", file]).wait;
+		if (res != 0)
+			throw new Exception("Failed to download " ~ url ~ " to " ~ file);
+	}
 }
 
 void validateSHA512(string file, string sha512)
@@ -268,7 +333,7 @@ void validateSHA512(string file, string sha512)
 	import std.digest.sha;
 	import std.string;
 
-	logln("\tValidating integrity...");
+	supplln("\tValidating integrity...");
 
 	auto got = sha512Of(cast(ubyte[]) fs.read(file));
 
@@ -278,7 +343,7 @@ void validateSHA512(string file, string sha512)
 
 void extractAndDelete(string file)
 {
-	logln("\tExtracting archive...");
+	supplln("\tExtracting archive...");
 
 	if (file.endsWith(".tar.gz"))
 	{
@@ -309,6 +374,8 @@ void markExecutable(string file)
 
 private static immutable logPrefix      = " \x1b[35;1mdorm \x1b[0;35mHelper \x1b[m";
 private static immutable errorLogPrefix = " \x1b[31;1mdorm \x1b[0;31mHelper \x1b[m";
+private static immutable colorlessPrefix  = " dorm Helper ";
+private static immutable whitespacePrefix = "             ";
 
 string bold(string s)
 {
@@ -323,7 +390,12 @@ void logln(T...)(T args)
 	if (color)
 		writeln(logPrefix, args);
 	else
-		writeln(args);
+		writeln(colorlessPrefix, args);
+}
+
+void supplln(T...)(T args)
+{
+	writeln(whitespacePrefix, args);
 }
 
 void errorln(T...)(T args)
@@ -331,5 +403,15 @@ void errorln(T...)(T args)
 	if (color)
 		stderr.writeln(errorLogPrefix, args);
 	else
-		stderr.writeln(args);
+		stderr.writeln(colorlessPrefix, args);
+}
+
+string humanSize(T)(T bytes) if (isIntegral!T)
+{
+	static immutable string prefixes = "kMGTPE";
+
+	if (bytes < 1024)
+		return text(bytes, " B");
+	int exp = cast(int)(log2(bytes) / 8); // 8 = log2(1024)
+	return format!"%.1f %siB"(bytes / cast(float) pow(1024, exp), prefixes[exp - 1]);
 }
