@@ -4,6 +4,7 @@ import std.array;
 import std.conv;
 import std.datetime.stopwatch;
 import std.exception;
+import std.math;
 import std.path;
 import std.process;
 import std.stdio;
@@ -266,7 +267,7 @@ void download(string url, string file)
 	logln("Downloading DORM dependency from ", url);
 	version (Windows)
 	{
-		File file = File(into, "wb");
+		File outFile = File(file, "wb");
 
 		StopWatch sw;
 		sw.start();
@@ -305,17 +306,17 @@ void download(string url, string file)
 			if (read == 0)
 				break;
 
-			file.rawWrite(buffer[0 .. read]);
+			outFile.rawWrite(buffer[0 .. read]);
 			received += read;
 
 			if (sw.peek >= 1.seconds)
 			{
 				sw.reset();
 				if (maxLen > 0)
-					supplln(format!"%s %s / %s (%.1f %%)"(title, humanSize(received),
+					supplln(format!"%s %s / %s (%.1f %%)"(file, humanSize(received),
 							humanSize(maxLen), received / cast(float) maxLen * 100));
 				else
-					supplln(format!"%s %s / ???"(title, humanSize(received)));
+					supplln(format!"%s %s / ???"(file, humanSize(received)));
 			}
 		}
 	}
