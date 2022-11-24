@@ -1708,7 +1708,8 @@ struct RemoveOperation(T : Model)
 	 * choose to not use the builder object at all and integrate manually
 	 * constructed.
 	 *
-	 * Returns: DB-returned number of how many rows have been deleted.
+	 * Returns: DB-returned number of how many rows have been touched. May also
+	 * include foreign rows deleted by referential actions and other things.
 	 *
 	 * Bugs: currently does not support joins because the underlying library
 	 * doesn't expose them yet.
@@ -1769,10 +1770,54 @@ struct RemoveOperation(T : Model)
 		return ctx.result != 0;
 	}
 
+	/**
+	 * Deletes the passed-in values by limiting the delete operation to the
+	 * primary key of this instance.
+	 *
+	 * Returns: DB-returned number of how many rows have been touched. May also
+	 * include foreign rows deleted by referential actions and other things.
+	 */
+	ulong bulk(T[] values...) @trusted
+	{
+		ffi.FFICondition[] condition, rhs;
+		condition.length = values.length;
+		rhs.length = values.length;
+		ffi.FFICondition lhs;
+		lhs.type = ffi.FFICondition.Type.Value;
+		lhs.value = columnValue(DormLayout!T.tableName, DormPrimaryKey!T.columnName);
+
+		foreach (i, value; values)
+		{
+			condition[i].type = ffi.FFICondition.Type.BinaryCondition;
+			condition[i].binaryCondition.type = ffi.FFIBinaryCondition.Type.Equals;
+			condition[i].binaryCondition.lhs = &lhs;
+			condition[i].binaryCondition.rhs = &rhs[i];
+
+			rhs[i].type = ffi.FFICondition.Type.Value;
+			rhs[i].value = conditionValue!(DormPrimaryKey!T)(
+				mixin("value.", DormPrimaryKey!T.sourceColumn));
+		}
+
+		ffi.FFICondition finalCondition;
+		finalCondition.type = ffi.FFICondition.Type.Disjunction;
+		finalCondition.disjunction = ffi.ffi(condition);
+
+		auto ctx = FreeableAsyncResult!ulong.make;
+		ffi.rorm_db_delete(
+			db.handle,
+			tx,
+			ffi.ffi(DormLayout!T.tableName),
+			&finalCondition,
+			ctx.callback.expand
+		);
+		return ctx.result;
+	}
+
 	/** 
 	 * Deletes all entries in this model.
 	 *
-	 * Returns: DB-returned number of how many rows have been deleted.
+	 * Returns: DB-returned number of how many rows have been touched. May also
+	 * include foreign rows deleted by referential actions and other things.
 	 */
 	ulong all() @trusted
 	{

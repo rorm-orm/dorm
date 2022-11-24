@@ -142,5 +142,11 @@ void main()
 	assert(!optionalAlice.isNull);
 
 	assertThrown(db.select!User.condition(u => u.name.like("nonexist%")).findOne);
-	auto assumedAlice = db.select!User.condition(u => u.name.like("alice%")).findOne;
+	auto assumedFoobar = db.select!User.condition(u => u.name.like("foo%")).findOne;
+
+	assert(db.remove!User.bulk(optionalAlice.get, assumedFoobar) == 2);
+
+	assert(db.select!User.array.length == 0);
+
+	writeln("all ok!");
 }
