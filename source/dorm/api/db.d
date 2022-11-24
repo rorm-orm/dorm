@@ -1487,6 +1487,16 @@ private struct JoinInformation
  *
  * Don't construct this struct manually, use the db.update or tx.update method
  * to create this struct.
+ *
+ * Methods you can call on this builder to manipulate the result:
+ * - `condition` to limit which rows to update. (can only be called once)
+ * - `set!("sourceColumnName")(value)` to update a single column to the given
+ *   value
+ * - `set(patchValue)`, where patchValue is a patch for this UpdateOperation, to
+ *   set multiple fields at once.
+ *
+ * Finishing methods you can call on this builder:
+ * - `await` to send the prepared update operation
  */
 struct UpdateOperation(
 	T : Model,
@@ -1610,8 +1620,16 @@ struct UpdateOperation(
 		}}
 	}
 
-	/// Starts the update procedure and waits for the result. Throws in case of
-	/// an error. Returns the number of rows affected.
+	/**
+	 * Starts the update procedure and waits for the result. Throws in case of
+	 * an error. Returns the number of rows affected.
+	 *
+	 * Uses the state modified by previous calls to the builder methods like
+	 * `set` and `condition` on this builder object.
+	 *
+	 * Bugs: currently does not support joins because the underlying library
+	 * doesn't expose them yet.
+	 */
 	ulong await()
 	{
 		// TODO: use join information
@@ -1636,6 +1654,11 @@ struct UpdateOperation(
  *
  * Don't construct this struct manually, use the db.remove or tx.remove method
  * to create this struct.
+ *
+ * Finishing methods you can call on this builder:
+ * - `byCondition` to delete all rows matching the condition.
+ * - `single` to delete a single instance, matched by primary key.
+ * - `all` to delete all rows in the table.
  */
 struct RemoveOperation(T : Model)
 {
@@ -1667,6 +1690,9 @@ struct RemoveOperation(T : Model)
 	 * constructed.
 	 *
 	 * Returns: DB-returned number of how many rows have been deleted.
+	 *
+	 * Bugs: currently does not support joins because the underlying library
+	 * doesn't expose them yet.
 	 */
 	ulong byCondition(
 		ConditionBuilderCallback callback
@@ -1750,6 +1776,8 @@ struct RemoveOperation(T : Model)
  * Don't construct this struct manually, use the db.select or tx.select method
  * (UFCS method defined globally) to create this struct.
  *
+ * Methods you can call on this builder to manipulate the result:
+ *
  * The following methods are implemented for restricting queries: (most can
  * only be called once, which is enforced through the template parameters)
  * - `condition` is used to set the "WHERE" clause in SQL. It can only be
@@ -1764,7 +1792,9 @@ struct RemoveOperation(T : Model)
  * keys:
  * - `populate` eagerly loads data from a foreign model, (re)using a join
  *
- * The following methods can then be used to extract the data:
+ * Finishing methods you can call on this builder:
+ *
+ * The following methods can be used to extract the data:
  * - `stream` to asynchronously stream data (can be used as iterator / range)
  * - `array` to eagerly fetch all data and do a big memory allocation to store
  *   all the values into.
