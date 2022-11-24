@@ -64,19 +64,26 @@ struct index
 enum embedded;
 enum ignored;
 
-/// Checks if the given attribute affects DORM Fields
-template isDormFieldAttribute(alias attr)
+/// Checks if the given attribute is part of this dorm.annotations module.
+template isDormAttribute(alias attr)
 {
-	pragma(msg, "TODO: check if " ~ attr.stringof ~ " is a DORM Field annotation");
-	enum isDormFieldAttribute = true;
+	static if (is(typeof(attr) == DefaultValue!T, T))
+		enum isDormAttribute = true;
+	else static if (is(typeof(attr)))
+		enum isDormAttribute = __traits(isSame, __traits(parent, typeof(attr)), dorm.annotations);
+	else static if (is(attr == constructValue!fn, alias fn))
+		enum isDormAttribute = true;
+	else static if (is(attr == validator!fn, alias fn))
+		enum isDormAttribute = true;
+	else
+		enum isDormAttribute = __traits(isSame, __traits(parent, attr), dorm.annotations);
 }
 
+/// Checks if the given attribute affects DORM Fields
+enum isDormFieldAttribute(alias attr) = isDormAttribute!attr;
+
 /// Checks if the given attribute affects DORM Models (classes)
-template isDormModelAttribute(alias attr)
-{
-	pragma(msg, "TODO: check if " ~ attr.stringof ~ " is a DORM Model annotation");
-	enum isDormFieldAttribute = true;
-}
+enum isDormModelAttribute(alias attr) = isDormAttribute!attr;
 
 /// Automatically generated foreign key attribute for one-to-many and many-to-many
 /// relations. Does not need to be assigned onto any variables.
