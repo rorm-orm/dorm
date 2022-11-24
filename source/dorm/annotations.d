@@ -90,8 +90,8 @@ enum isDormModelAttribute(alias attr) = isDormAttribute!attr;
 struct ForeignKeyImpl
 {
 	string table, column;
-	ReferentialAction onUpdate; // TODO: decide on defaults
-	ReferentialAction onDelete;
+	ReferentialAction onUpdate = restrict;
+	ReferentialAction onDelete = restrict;
 }
 
 enum ReferentialAction
