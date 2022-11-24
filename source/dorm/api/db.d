@@ -177,8 +177,16 @@ struct DormDB
 	 *
 	 * Returns: true if anything was deleted, false otherwise.
 	 */
-	ulong remove(T : Model)(T instance) return
+	bool remove(T : Model)(T instance) return
 	{
+		return remove!T.single(instance);
+	}
+
+	/// ditto
+	bool remove(TPatch)(TPatch instance) return
+	if (!is(TPatch : Model) && isSomePatch!TPatch)
+	{
+		alias T = DBType!TPatch;
 		return remove!T.single(instance);
 	}
 
@@ -559,6 +567,14 @@ struct DormTransaction
 	 */
 	bool remove(T : Model)(T instance) return
 	{
+		return remove!T.single(instance);
+	}
+
+	/// ditto
+	bool remove(TPatch)(TPatch instance) return
+	if (!is(TPatch : Model) && isSomePatch!TPatch)
+	{
+		alias T = DBType!TPatch;
 		return remove!T.single(instance);
 	}
 }
@@ -1744,7 +1760,28 @@ struct RemoveOperation(T : Model)
 	 *
 	 * Returns: true if anything was deleted, false otherwise.
 	 */
-	bool single(T value) @trusted
+	bool single(T value) @safe
+	{
+		return singleImpl(conditionValue!(DormPrimaryKey!T)(
+			mixin("value.", DormPrimaryKey!T.sourceColumn)));
+	}
+
+	/// ditto
+	bool single(P)(P patch) @safe
+	if (!is(P == T) && isSomePatch!P)
+	{
+		mixin ValidatePatch!(P, T);
+
+		static assert(is(typeof(mixin("patch.", DormPrimaryKey!T.sourceColumn))),
+			"Primary key '" ~ DormPrimaryKey!T.sourceColumn
+			~ "' must be included in patch type "
+			~ P.stringof ~ " in order to be a valid argument to remove!");
+
+		return singleImpl(conditionValue!(DormPrimaryKey!T)(
+			mixin("patch.", DormPrimaryKey!T.sourceColumn)));
+	}
+
+	private bool singleImpl(ffi.FFIValue primaryKey) @trusted
 	{
 		ffi.FFICondition condition, lhs, rhs;
 		condition.type = ffi.FFICondition.Type.BinaryCondition;
@@ -1755,8 +1792,7 @@ struct RemoveOperation(T : Model)
 		lhs.type = ffi.FFICondition.Type.Value;
 		rhs.type = ffi.FFICondition.Type.Value;
 		lhs.value = columnValue(DormLayout!T.tableName, DormPrimaryKey!T.columnName);
-		rhs.value = conditionValue!(DormPrimaryKey!T)(
-			mixin("value.", DormPrimaryKey!T.sourceColumn));
+		rhs.value = primaryKey;
 
 		auto ctx = FreeableAsyncResult!ulong.make;
 		ffi.rorm_db_delete(
