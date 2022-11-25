@@ -26,7 +26,7 @@ enum ArchSuffix
 	windows_x86,
 }
 
-void main(string[] args)
+void main()
 {
 	auto rq = Request();
 	rq.addHeaders(["User-Agent": "[update_downloader.d] https://github.com/rorm-orm/dorm"]);
