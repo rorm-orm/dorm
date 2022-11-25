@@ -1,4 +1,4 @@
-name: Integration Tests
+name: Building & Testing
 on:
   push:
     paths-ignore:
@@ -8,6 +8,10 @@ on:
 env:
   DFLAGS: "-lowmem"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   run-tests:
     name: Build DORM and run tests
@@ -15,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         compiler:
           - dmd-latest
           - ldc-latest
@@ -28,30 +32,107 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
 
-      - name: Lint dorm with dscanner
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.compiler == 'dmd-latest' }}
-        run: |
-          dub run dscanner -- --report --reportFile=report.json --reportFormat=sonarQubeGenericIssueData
-          wc -l report.json
-          python3 .github/sonar_to_sarif.py -i report.json -o report.sarif --git ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
-
-      - name: Upload dscanner analysis results to GitHub
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.compiler == 'dmd-latest' }}
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: report.sarif
-          wait-for-processing: true
-
       - name: Build dorm
         run: dub build
 
       - name: Test dorm
         run: dub test
 
-      - name: Build testapp
+      - name: Build test app
         run: dub build
         working-directory: testapp
 
       - name: Run integration tests
         run: ./run.sh
         working-directory: integration-tests
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: dmd-latest
+
+      - name: Lint dorm with dscanner
+        run: |
+          dub run dscanner -- --report --reportFile=report.json --reportFormat=sonarQubeGenericIssueData
+          wc -l report.json
+          python3 .github/sonar_to_sarif.py -i report.json -o report.sarif --git ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
+
+      - name: Upload dscanner analysis results to GitHub
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: report.sarif
+          wait-for-processing: true
+
+  incompatibility-check:
+    name: Check with latest rorm-lib
+    needs:
+      - run-tests
+      - lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        compiler:
+          - dmd-latest
+          - ldc-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - uses: dlang-community/setup-dlang@v1
+        with:
+          compiler: ${{ matrix.compiler }}
+
+      - name: Update rust
+        run: rustup update
+
+      - name: Build rorm-lib from source
+        run: |
+          set -x
+          git clone https://github.com/rorm-orm/rorm-lib --recursive -v
+          cd rorm-lib
+          git checkout dev
+          git log -n 1
+          cargo build -F logging
+          ls -lah target/debug
+
+      - name: Move rorm-lib to the correct place (Windows)
+        run: mv -v rorm-lib/target/debug/rorm.lib ./rorm.lib
+        if: ${{ matrix.os == 'windows-latest' }}
+
+      - name: Move rorm-lib to the correct place (Unix)
+        run: mv -v rorm-lib/target/debug/librorm.a ./librorm.a
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Build rorm-cli from source
+        run: |
+          set -x
+          git clone https://github.com/rorm-orm/rorm-cli --recursive -v rorm-cli-src
+          cd rorm-cli-src
+          git checkout dev
+          git log -n 1
+          cargo build
+          ls -lah target/debug
+          cp -v target/debug/rorm-cli ..
+
+      - name: Build & test dorm
+        run: |
+          export PATH=~/.cargo/bin:$PATH
+          export RUST_LOG=rorm=trace
+          export RUST_BACKTRACE=full
+          bash .github/capture.sh .github/build_test_dorm.sh
+        continue-on-error: true
+        id: testing
+
+      - name: Create new issue for failed changes
+        run: pip3 install requests && cat stderr.txt && ISSUE_TITLE="Building and testing failed for dorm (exit code $(cat exit_code))" python3 .github/create_issue.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        if: ${{ steps.testing.outcome == 'failure' }}
