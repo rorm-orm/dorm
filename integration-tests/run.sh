@@ -30,7 +30,9 @@ do
 		rm -rf migrations
 		rm -f .models.json
 		rm -f database.sqlite3
-		echo "$DATABASE_CONFIG" > database.toml
+		if [ ! -f database.toml ]; then
+		  echo "$DATABASE_CONFIG" > database.toml
+		fi
 		if ! ./run.sh; then
 			echo "Error: Test $testDir failed"
 			EXIT_CODE=1
