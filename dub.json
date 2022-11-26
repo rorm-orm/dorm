@@ -29,7 +29,8 @@
 	"libs-windows": ["Ws2_32", "ntdll", "ucrt", "Bcrypt", "Userenv", "Ole32"],
 	"description": "A D ORM.",
 	"dflags": [
-		"-lowmem"
+		"-lowmem",
+		"-allinst"
 	],
 	"subPackages": [
 		"build-models",
