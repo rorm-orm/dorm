@@ -1,4 +1,6 @@
 name "nested-join"
 
+dflags "-lowmem"
+
 dependency "dorm" path="../.."
 dependency "dorm:build-models" path="../.."

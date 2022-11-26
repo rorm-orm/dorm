@@ -1,4 +1,6 @@
 name "crud"
 
+dflags "-lowmem"
+
 dependency "dorm" path="../.."
 dependency "dorm:build-models" path="../.."
