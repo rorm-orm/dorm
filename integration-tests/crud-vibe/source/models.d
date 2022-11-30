@@ -5,10 +5,15 @@ import dorm.design;
 mixin RegisterModels;
 
 struct AuthInfo {
+	@maxLength(32)
 	string method = "password";
+	@maxLength(255)
 	string passwordHash;
+	@maxLength(255)
 	string token;
+	@maxLength(255)
 	string secret;
+	@maxLength(255)
 	string info;
 }
 

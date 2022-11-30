@@ -25,6 +25,7 @@ struct SuperCommon
 
 struct Common
 {
+	@maxLength(255)
 	string commonName;
 	@embedded
 	SuperCommon superCommon;

@@ -29,7 +29,7 @@ do
 		rm -rf .dub
 		rm -rf migrations
 		rm -f .models.json
-		rm -f database.sqlite3
+		rm -f *.sqlite3
 		if [ ! -f database.toml ]; then
 		  echo "$DATABASE_CONFIG" > database.toml
 		fi
