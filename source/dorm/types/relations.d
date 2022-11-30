@@ -82,6 +82,17 @@ version(none) static struct ManyToManyField(alias idOrModel)
 	}
 }
 
+/**
+ * DORM field type representing a referenced model through a foreign key in SQL.
+ *
+ * The actual data stored in the DB as foreign key is what's stored in the
+ * `foreignKey` member. The `populated` property is simply a cache member for
+ * supporting proactively fetched joined data from the database. Trying to
+ * access the populated data without having it populated will result in a
+ * program crash through `assert(false)`.
+ *
+ * Bugs: `db.populate(ModelRef)` is not yet implemented
+ */
 static template ModelRef(alias idOrPatch)
 {
 	alias primaryKeyAlias = IdAliasFromIdOrPatch!idOrPatch;
@@ -90,6 +101,7 @@ static template ModelRef(alias idOrPatch)
 	alias ModelRef = ModelRefImpl!(primaryKeyAlias, T, TPatch);
 }
 
+/// ditto
 static struct ModelRefImpl(alias id, _TModel, _TSelect)
 {
 	alias TModel = _TModel;
@@ -98,25 +110,64 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 	enum primaryKeyField = DormField!(_TModel, __traits(identifier, id));
 	alias PrimaryKeyType = typeof(primaryKeyAlias);
 
+	/// The actual data stored in the DB field. Can be manipulated manually to
+	/// perform special operations not supported otherwise.
 	PrimaryKeyType foreignKey;
 
 	private TSelect cached;
 	private bool resolved;
 
+	/// Returns: `true` if populated can be called, `false` otherwise.
+	bool isPopulated() const @property
+	{
+		return resolved;
+	}
+
+	/**
+	 * Returns: the value that was fetched from the database. Only works if the
+	 * value was either requested to be included using `select.populate` or by
+	 * calling `db.populate(thisObject)`.
+	 *
+	 * When trying to call this function with an unpopulate object, the program
+	 * will crash with an AssertError.
+	 */
 	TSelect populated()
 	{
-		assert(resolved, "ModelRef reference is not populated! Call "
-			~ "`db.populate!(Model.referenceFieldName)(modelInstance)` or query "
-			~ "data with the recursion flag set!");
+		if (!resolved)
+		{
+			assert(false, "ModelRef reference is not populated! Call "
+				~ "`db.populate!(Model.referenceFieldName)(modelInstance)` or query "
+				~ "data with `select!T.populate(o => o.fieldNameToPopulate.yes)`!");
+		}
 		return cached;
 	}
 
+	/**
+	 * Sets the populated value as well as the foreign key for saving in the DB.
+	 */
 	auto opAssign(TSelect value)
 	{
 		resolved = true;
 		cached = value;
 		foreignKey = __traits(child, value, primaryKeyAlias);
 		return value;
+	}
+
+	/// Returns true if `other`'s primary key is equal to the foreign key stored
+	/// in this ModelRef instance. Does not check any other fields. Does not
+	/// require this ModelRef to be populated.
+	bool refersTo(const TModel other) const
+	{
+		return foreignKey == mixin("other.", primaryKeyField.sourceColumn);
+	}
+
+	static if (!is(TModel == TSelect))
+	{
+		/// ditto
+		bool refersTo(const TSelect other) const
+		{
+			return foreignKey == __traits(child, other, primaryKeyAlias);
+		}
 	}
 }
 

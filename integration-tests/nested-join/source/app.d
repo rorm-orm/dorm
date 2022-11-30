@@ -49,6 +49,13 @@ void main()
 	reply.message = "Very cool!";
 	db.insert(reply);
 
+	auto justInserted = db.select!Reply
+		.condition(r => r.id.equals(0))
+		.findOne;
+	assert(justInserted.id == reply.id);
+	assert(justInserted.message == reply.message);
+	assert(justInserted.replyTo.refersTo(toot1));
+
 	Reply reply2 = new Reply();
 	reply2.id = 1;
 	reply2.replyTo = toot2;
