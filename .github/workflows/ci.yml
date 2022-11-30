@@ -20,6 +20,9 @@ jobs:
         compiler:
           - dmd-latest
           - ldc-latest
+        exclude:
+          - os: macos-latest
+            compiler: dmd-latest
     steps:
       - uses: actions/checkout@v3
         with:
