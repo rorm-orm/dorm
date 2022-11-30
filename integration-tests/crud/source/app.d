@@ -16,11 +16,8 @@ mixin SetupDormRuntime;
 
 void main()
 {
-	DBConnectOptions options = {
-		backend: DBBackend.SQLite,
-		name: "database.sqlite3"
-	};
-	auto db = DormDB(options);
+	auto appConfig = parseTomlConfig!BareConfiguration("database.toml");
+	auto db = DormDB(appConfig.database);
 
 	User.Fields userInsert1 = {
 		name: "alice_alicington",

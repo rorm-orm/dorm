@@ -80,11 +80,8 @@ void main() {
 		SysTime createdAt;
 	}
 
-	DBConnectOptions options = {
-		backend: DBBackend.SQLite,
-		name: "database.sqlite3"
-	};
-	auto db = DormDB(options);
+	auto appConfig = parseTomlConfig!BareConfiguration("database.toml");
+	auto db = DormDB(appConfig.database);
 
 	auto f = new Faker_de(uniform!int);
 

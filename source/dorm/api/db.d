@@ -17,6 +17,9 @@ import std.range.primitives;
 import std.traits;
 import std.typecons : Nullable;
 
+import mir.serde;
+import mir.algebraic;
+
 import core.attribute;
 import core.time;
 
@@ -33,28 +36,102 @@ static if (!is(typeof(mustuse)))
 /// join aliases being available right now.
 private enum maxJoins = 256;
 
+/** 
+ * Helper struct for `deserializeToml!BareConfiguration` to simply parse the
+ * `database.toml` file without additional configuration.
+ *
+ * As user you can define your own configuration struct and simply add a member
+ * `@serdeKeys("Database") DBConnectOptions database;` at the end to add your
+ * own configuration options.
+ */
+struct BareConfiguration
+{
+	// make sure you put custom fields before database!
+
+	/// only member, database settings
+	@serdeKeys("Database") DBConnectOptions database;
+}
+
+/// Reads `filename` from disk as text, then deserializes it from TOML to `T`.
+T parseTomlConfig(T)(string filename)
+{
+	import mir.toml;
+	import std.file : readText, exists;
+
+	if (!exists(filename))
+		throw new DormException("TOML Configuration file '" ~ filename
+			~ "' does not exist!");
+
+	return readText(filename).deserializeToml!T;
+}
+
 /**
  * Configuration operation to connect to a database.
+ *
+ * See_Also: $(LREF SQLiteConnectOptions), $(LREF PostgresConnectOptions),
+ * $(LREF MySQLConnectOptions)
  */
-struct DBConnectOptions
+alias DBConnectOptions = Algebraic!(
+	SQLiteConnectOptions,
+	PostgresConnectOptions,
+	MySQLConnectOptions
+);
+
+/// SQLite specific connection options
+@serdeDiscriminatedField("Driver", "SQLite")
+struct SQLiteConnectOptions
 {
-@safe:
-	/// Specifies the driver that will be used.
-	DBBackend backend;
-	/// Name of the database, in case of `DatabaseBackend.SQLite` name of the file.
-	string name;
-	/// Host to connect to. Not used in case of `DatabaseBackend.SQLite`.
-	string host;
-	/// Port to connect to. Not used in case of `DatabaseBackend.SQLite`.
-	ushort port;
-	/// Username to authenticate with. Not used in case of `DatabaseBackend.SQLite`.
-	string user;
-	/// Password to authenticate with. Not used in case of `DatabaseBackend.SQLite`.
-	string password;
+	/// Filename of the SQLite database
+	@serdeKeys("Filename") string filename;
+@serdeOptional:
 	/// Minimal connections to initialize upfront. Must not be 0.
-	uint minConnections = ffi.DBConnectOptions.init.minConnections;
+	@serdeKeys("MinConnections") uint minConnections = ffi.DBConnectOptions.init.minConnections;
 	/// Maximum connections that allowed to be created. Must not be 0.
-	uint maxConnections = ffi.DBConnectOptions.init.maxConnections;
+	@serdeKeys("MaxConnections") uint maxConnections = ffi.DBConnectOptions.init.maxConnections;
+}
+
+/// Postgres specific connection options
+@serdeDiscriminatedField("Driver", "Postgres")
+struct PostgresConnectOptions
+{
+	/// Name of the database.
+	@serdeKeys("Name") string name;
+	/// Host to connect to.
+	@serdeKeys("Host") string host;
+	/// Port to connect to.
+	@serdeOptional
+	@serdeKeys("Port") ushort port = 5432;
+	/// Username to authenticate with.
+	@serdeKeys("User") string user;
+	/// Password to authenticate with.
+	@serdeKeys("Password") string password;
+@serdeOptional:
+	/// Minimal connections to initialize upfront. Must not be 0.
+	@serdeKeys("MinConnections") uint minConnections = ffi.DBConnectOptions.init.minConnections;
+	/// Maximum connections that allowed to be created. Must not be 0.
+	@serdeKeys("MaxConnections") uint maxConnections = ffi.DBConnectOptions.init.maxConnections;
+}
+
+/// MySQL specific connection options
+@serdeDiscriminatedField("Driver", "MySQL")
+struct MySQLConnectOptions
+{
+	/// Name of the database.
+	@serdeKeys("Name") string name;
+	/// Host to connect to.
+	@serdeKeys("Host") string host;
+	/// Port to connect to.
+	@serdeOptional
+	@serdeKeys("Port") ushort port = 3306;
+	/// Username to authenticate with.
+	@serdeKeys("User") string user;
+	/// Password to authenticate with.
+	@serdeKeys("Password") string password;
+@serdeOptional:
+	/// Minimal connections to initialize upfront. Must not be 0.
+	@serdeKeys("MinConnections") uint minConnections = ffi.DBConnectOptions.init.minConnections;
+	/// Maximum connections that allowed to be created. Must not be 0.
+	@serdeKeys("MaxConnections") uint maxConnections = ffi.DBConnectOptions.init.maxConnections;
 }
 
 /**
@@ -87,7 +164,43 @@ struct DormDB
 	 */
 	this(DBConnectOptions options) @trusted
 	{
-		auto ffiOptions = options.ffiInto!(ffi.DBConnectOptions);
+		auto ffiOptions = options.match!(
+			(SQLiteConnectOptions sqlite) {
+				ffi.DBConnectOptions ret = {
+					backend: ffi.DBBackend.SQLite,
+					name: ffi.ffi(sqlite.filename),
+					minConnections: sqlite.minConnections,
+					maxConnections: sqlite.maxConnections
+				};
+				return ret;
+			},
+			(PostgresConnectOptions postgres) {
+				ffi.DBConnectOptions ret = {
+					backend: ffi.DBBackend.Postgres,
+					name: ffi.ffi(postgres.name),
+					host: ffi.ffi(postgres.host),
+					port: postgres.port,
+					user: ffi.ffi(postgres.user),
+					password: ffi.ffi(postgres.password),
+					minConnections: postgres.minConnections,
+					maxConnections: postgres.maxConnections
+				};
+				return ret;
+			},
+			(MySQLConnectOptions mysql) {
+				ffi.DBConnectOptions ret = {
+					backend: ffi.DBBackend.MySQL,
+					name: ffi.ffi(mysql.name),
+					host: ffi.ffi(mysql.host),
+					port: mysql.port,
+					user: ffi.ffi(mysql.user),
+					password: ffi.ffi(mysql.password),
+					minConnections: mysql.minConnections,
+					maxConnections: mysql.maxConnections
+				};
+				return ret;
+			}
+		);
 
 		scope dbHandleAsync = FreeableAsyncResult!(ffi.DBHandle).make;
 		ffi.rorm_db_connect(ffiOptions, dbHandleAsync.callback.expand);

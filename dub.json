@@ -8,6 +8,7 @@
 	"copyright": "Copyright © 2022, WebFreak",
 	"dependencies": {
 		"mir-ion": "~>2.1",
+		"mir-toml": "~>0.1.0",
 		"vibe-core": { "optional": true, "version": ">=1.0.0" }
 	},
 	"preBuildCommands": ["\"$DC\" -run download_dependencies.d ARCH $DUB_ARCH PLATFORM $DUB_PLATFORM"],

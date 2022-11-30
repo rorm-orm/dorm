@@ -10,12 +10,8 @@ __gshared DormDB db;
 
 void main()
 {
-	// TODO: parse this from database.toml
-	DBConnectOptions options = {
-		backend: DBBackend.SQLite,
-		name: "database.sqlite3"
-	};
-	db = DormDB(options);
+	auto appConfig = parseTomlConfig!BareConfiguration("database.toml");
+	db = DormDB(appConfig.database);
 
 	logInfo("Database connection successful");
 

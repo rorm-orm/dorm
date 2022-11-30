@@ -15,7 +15,7 @@ fi
 DATABASE_CONFIG=$(cat <<-END
 [Database]
 Driver = 'SQLite'
-Filename = 'database.sqlite3'
+Filename = 'test.sqlite3'
 END
 )
 
