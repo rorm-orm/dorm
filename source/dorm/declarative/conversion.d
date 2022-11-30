@@ -6,6 +6,7 @@ module dorm.declarative.conversion;
 
 import dorm.annotations;
 import dorm.declarative;
+import dorm.exception;
 import dorm.model;
 import dorm.types;
 
@@ -250,7 +251,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 			foreach (other; serialized.fields)
 			{
 				if (other.isPrimaryKey)
-					throw new Exception("Duplicate primary key found in Model " ~ TModel.stringof
+					throw new DormModelException("Duplicate primary key found in Model " ~ TModel.stringof
 						~ ":\n- first defined here:\n"
 						~ other.sourceColumn ~ " in " ~ other.definedAt.toString
 						~ "\n- then attempted to redefine here:\n"
@@ -357,7 +358,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		{
 			if (mustBeNullable && !hasNonNullDefaultValue)
 			{
-				throw new Exception(field.sourceReferenceName(TModel.stringof)
+				throw new DormModelException(field.sourceReferenceName(TModel.stringof)
 					~ " may be null. Change it to Nullable!(" ~ typeof(fieldAlias).stringof
 					~ ") or annotate with defaultValue, autoIncrement or autoCreateTime");
 			}
@@ -366,11 +367,11 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 
 		// https://github.com/myOmikron/drorm/issues/8
 		if (field.hasFlag(AnnotationFlag.autoIncrement) && !field.hasFlag(AnnotationFlag.primaryKey))
-				throw new Exception(field.sourceReferenceName(TModel.stringof)
+				throw new DormModelException(field.sourceReferenceName(TModel.stringof)
 					~ " has @autoIncrement annotation, but is missing required @primaryKey annotation.");
 
 		if (field.type == InvalidDBType)
-			throw new Exception(SourceLocation(__traits(getLocation, fieldAlias)).toErrorString
+			throw new DormModelException(SourceLocation(__traits(getLocation, fieldAlias)).toErrorString
 				~ "Cannot resolve DORM Model DBType from " ~ typeof(fieldAlias).stringof
 				~ " `" ~ directFieldName ~ "` in " ~ TModel.stringof);
 
@@ -380,7 +381,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 			{
 				if (ai == bi) continue;
 				if (!lhs.isCompatibleWith(rhs))
-					throw new Exception("Incompatible annotation: "
+					throw new DormModelException("Incompatible annotation: "
 						~ lhs.to!string ~ " conflicts with " ~ rhs.to!string
 						~ " on " ~ field.sourceReferenceName(TModel.stringof));
 			}

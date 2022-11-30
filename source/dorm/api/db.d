@@ -2,9 +2,10 @@ module dorm.api.db;
 
 import dorm.declarative;
 import dorm.declarative.conversion;
+import dorm.exception;
 import dorm.lib.util;
-import dorm.types;
 import dorm.model : Model;
+import dorm.types;
 import ffi = dorm.lib.ffi;
 
 import std.algorithm : any, move;
@@ -271,7 +272,7 @@ static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
 
 	// TODO: delegate with @safe / @system differences + index overloads + don't mark whole thing as @trusted
 	/// Starts a new query and iterates all the results on each foreach call.
-	int opApply(scope int delegate(scope RawRow row) dg) @trusted
+	int opApply(scope int delegate(scope RawRow row) dg) scope @trusted
 	{
 		scope (exit)
 			rowCountImpl = -1;
@@ -298,7 +299,7 @@ static SelectOperation!(DBType!(Selection), SelectType!(Selection)) select(
 	}
 
 	/// Runs the raw SQL query, discarding results (throwing on error)
-	void exec()
+	void exec() scope
 	{
 		assert(rowCountImpl == -1, "Don't iterate over the same RawSQLIterator on multiple threads!");
 
@@ -711,7 +712,7 @@ private void insertImpl(bool single, T)(
 						~ field.definedAt.toString ~ " failed user validation.";
 			}
 			if (error.length)
-				throw new Exception(error);
+				throw new DormException(error);
 		}
 	}
 	else
@@ -751,7 +752,7 @@ private void insertImpl(bool single, T)(
 			}
 
 			if (error.length)
-				throw new Exception(error);
+				throw new DormException(error);
 		}
 	}
 
@@ -805,6 +806,7 @@ private struct ConditionBuilderData
 ///
 /// When mistyping names, an expressive error message is printed as compile
 /// time output, showing all possible members for convenience.
+@mustuse
 struct ConditionBuilder(T)
 {
 	private ConditionBuilderData* builderData;
@@ -857,6 +859,7 @@ struct ConditionBuilder(T)
 ///
 /// When mistyping names, an expressive error message is printed as compile
 /// time output, showing all possible members for convenience.
+@mustuse
 struct OrderBuilder(T)
 {
 	private ConditionBuilderData* builderData;
@@ -907,6 +910,7 @@ struct OrderBuilder(T)
 ///
 /// When mistyping names, an expressive error message is printed as compile
 /// time output, showing all possible members for convenience.
+@mustuse
 struct PopulateBuilder(T)
 {
 	private ConditionBuilderData* builderData;
@@ -1025,6 +1029,7 @@ private enum supplErrorPrefix = "           " ~ supplErrorWithFilePrefix;
 /// Helper type to quickly create `field == false` conditions for boolean fields.
 ///
 /// See `ConditionBuilder`
+@mustuse
 struct NotConditionBuilder(T)
 {
 	static foreach (field; DormFields!T)
@@ -1128,6 +1133,7 @@ private mixin template ForeignJoinHelper()
 /// accessible. When operating on the primary key that is referenced to from the
 /// ModelRef foreign key, no join operation will be enforced, as the data is
 /// stored entirely in the table with the foreign key.
+@mustuse
 struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
@@ -1177,6 +1183,7 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 /// accessible. When operating on the primary key that is referenced to from the
 /// ModelRef foreign key, no join operation will be enforced, as the data is
 /// stored entirely in the table with the foreign key.
+@mustuse
 struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
@@ -1232,6 +1239,7 @@ struct PopulateRef
 }
 
 /// Helper struct
+@mustuse
 struct PopulateBuilderField(ModelRef, ModelFormat.Field field)
 {
 	alias RefDB = ModelRef.TModel;
@@ -1297,6 +1305,7 @@ private string lastIdentifier(string s)
 /// - `notExists`
 /// - `between`
 /// - `notBetween`
+@mustuse
 struct ConditionBuilderField(T, ModelFormat.Field field)
 {
 	// TODO: all the type specific field to Condition thingies
@@ -1532,6 +1541,7 @@ private struct JoinInformation
  * Finishing methods you can call on this builder:
  * - `await` to send the prepared update operation
  */
+@mustuse
 struct UpdateOperation(
 	T : Model,
 	bool hasWhere = false,
@@ -1570,8 +1580,8 @@ struct UpdateOperation(
 		/// choose to not use the builder object at all and integrate manually
 		/// constructed
 		UpdateOperation!(T, true) condition(
-			ConditionBuilderCallback callback
-		) return @trusted
+			scope ConditionBuilderCallback callback
+		) return scope @trusted
 		{
 			scope ConditionBuilderData data;
 			scope ConditionBuilder!T builder;
@@ -1589,7 +1599,7 @@ struct UpdateOperation(
 	{
 		static if (FieldOrPatch.length == 0)
 		{
-			typeof(this) set(P)(P patch) return
+			typeof(this) set(P)(P patch) return scope
 			{
 				setPatch(patch);
 				return move(this);
@@ -1604,7 +1614,7 @@ struct UpdateOperation(
 
 			static if (is(FieldOrPatch[0] == struct))
 			{
-				typeof(this) set(FieldOrPatch[0] patch) return
+				typeof(this) set(FieldOrPatch[0] patch) return scope
 				{
 					setPatch(patch);
 					return move(this);
@@ -1617,7 +1627,7 @@ struct UpdateOperation(
 					~ "`, but it doesn't exist on Model `"
 					~ T.stringof ~ "`\n\tAvailable fields:" ~ DormListFieldsForError!T);
 
-				typeof(this) set(typeof(mixin("T.", FieldOrPatch[0])) value) return
+				typeof(this) set(typeof(mixin("T.", FieldOrPatch[0])) value) return scope
 				{
 					enum field = DormField!(T, FieldOrPatch[0]);
 					static immutable columnName = field.columnName;
@@ -1631,7 +1641,7 @@ struct UpdateOperation(
 		}
 	}
 
-	private void setPatch(TPatch)(TPatch patch)
+	private void setPatch(TPatch)(TPatch patch) scope
 	if (isSomePatch!TPatch)
 	{
 		mixin ValidatePatch!(TPatch, T);
@@ -1664,7 +1674,7 @@ struct UpdateOperation(
 	 * Bugs: currently does not support joins because the underlying library
 	 * doesn't expose them yet.
 	 */
-	ulong await()
+	ulong await() scope
 	{
 		// TODO: use join information
 
@@ -1691,9 +1701,12 @@ struct UpdateOperation(
  *
  * Finishing methods you can call on this builder:
  * - `byCondition` to delete all rows matching the condition.
- * - `single` to delete a single instance, matched by primary key.
+ * - `single` to delete a single instance or patch, matched by primary key.
+ * - `bulk` to delete multiple instances or patches in bulk, matched by primary
+ *   key.
  * - `all` to delete all rows in the table.
  */
+@mustuse
 struct RemoveOperation(T : Model)
 {
 @safe:
@@ -1730,8 +1743,8 @@ struct RemoveOperation(T : Model)
 	 * doesn't expose them yet.
 	 */
 	ulong byCondition(
-		ConditionBuilderCallback callback
-	) return @trusted
+		scope ConditionBuilderCallback callback
+	) return scope @trusted
 	{
 		scope ConditionBuilderData data;
 		scope ConditionBuilder!T builder;
@@ -1760,14 +1773,14 @@ struct RemoveOperation(T : Model)
 	 *
 	 * Returns: true if anything was deleted, false otherwise.
 	 */
-	bool single(T value) @safe
+	bool single(T value) scope @safe
 	{
 		return singleImpl(conditionValue!(DormPrimaryKey!T)(
 			mixin("value.", DormPrimaryKey!T.sourceColumn)));
 	}
 
 	/// ditto
-	bool single(P)(P patch) @safe
+	bool single(P)(P patch) scope @safe
 	if (!is(P == T) && isSomePatch!P)
 	{
 		mixin ValidatePatch!(P, T);
@@ -1781,7 +1794,7 @@ struct RemoveOperation(T : Model)
 			mixin("patch.", DormPrimaryKey!T.sourceColumn)));
 	}
 
-	private bool singleImpl(ffi.FFIValue primaryKey) @trusted
+	private bool singleImpl(ffi.FFIValue primaryKey) scope @trusted
 	{
 		ffi.FFICondition condition, lhs, rhs;
 		condition.type = ffi.FFICondition.Type.BinaryCondition;
@@ -1812,7 +1825,7 @@ struct RemoveOperation(T : Model)
 	 * Returns: DB-returned number of how many rows have been touched. May also
 	 * include foreign rows deleted by referential actions and other things.
 	 */
-	ulong bulk(T[] values...) @trusted
+	ulong bulk(T[] values...) scope @trusted
 	{
 		ffi.FFICondition[] condition, rhs;
 		condition.length = values.length;
@@ -1854,7 +1867,7 @@ struct RemoveOperation(T : Model)
 	 * Returns: DB-returned number of how many rows have been touched. May also
 	 * include foreign rows deleted by referential actions and other things.
 	 */
-	ulong all() @trusted
+	ulong all() scope @trusted
 	{
 		auto ctx = FreeableAsyncResult!ulong.make;
 		ffi.rorm_db_delete(
@@ -1910,6 +1923,7 @@ struct RemoveOperation(T : Model)
  *
  * `findOne`/`findOptional` are only usable when no `limit` is set.
  */
+@mustuse
 struct SelectOperation(
 	T,
 	TSelect,
@@ -1920,11 +1934,17 @@ struct SelectOperation(
 {
 @safe:
 	private const(DormDB)* db;
-	private ffi.DBTransactionHandle tx;
+	private const(ffi.DBTransactionHandle) tx;
 	private ffi.FFICondition[] conditionTree;
 	private ffi.FFIOrderByEntry[] ordering;
 	private JoinInformation joinInformation;
 	private ulong _offset, _limit;
+
+	private this(return const(DormDB)* db, return const(ffi.DBTransactionHandle) tx)
+	{
+		this.db = db;
+		this.tx = tx;
+	}
 
 	// TODO: might be copyable
 	@disable this(this);
@@ -1952,8 +1972,8 @@ struct SelectOperation(
 		/// choose to not use the builder object at all and integrate manually
 		/// constructed
 		SelectOperation!(T, TSelect, true, hasOffset, hasLimit) condition(
-			ConditionBuilderCallback callback
-		) return @trusted
+			scope ConditionBuilderCallback callback
+		) return scope @trusted
 		{
 			scope ConditionBuilderData data;
 			scope ConditionBuilder!T builder;
@@ -1980,7 +2000,7 @@ struct SelectOperation(
 	/// important - the first order orders all the rows, the second order only
 	/// orders each group of rows where the previous order had the same values,
 	/// etc.
-	typeof(this) orderBy(OrderBuilderCallback callback) return @trusted
+	typeof(this) orderBy(scope OrderBuilderCallback callback) return scope @trusted
 	{
 		scope ConditionBuilderData data;
 		scope OrderBuilder!T builder;
@@ -2003,7 +2023,7 @@ struct SelectOperation(
 	///
 	/// Returning `u => null` means no further populate will be added. (Useful
 	/// only at runtime)
-	typeof(this) populate(PopulateBuilderCallback callback) return @trusted
+	typeof(this) populate(scope PopulateBuilderCallback callback) return scope @trusted
 	{
 		scope ConditionBuilderData data;
 		scope PopulateBuilder!T builder;
@@ -2018,7 +2038,7 @@ struct SelectOperation(
 	static if (!hasOffset)
 	{
 		/// Sets the offset. (number of rows after which to return from the database)
-		SelectOperation!(T, TSelect, hasWhere, true, hasLimit) offset(ulong offset) return @trusted
+		SelectOperation!(T, TSelect, hasWhere, true, hasLimit) offset(ulong offset) return scope @trusted
 		{
 			_offset = offset;
 			return cast(typeof(return))move(this);
@@ -2029,7 +2049,7 @@ struct SelectOperation(
 	{
 		/// Sets the maximum number of rows to return. Using this method
 		/// disables the `findOne` and `findOptional` methods.
-		SelectOperation!(T, TSelect, hasWhere, hasOffset, true) limit(ulong limit) return @trusted
+		SelectOperation!(T, TSelect, hasWhere, hasOffset, true) limit(ulong limit) return scope @trusted
 		{
 			_limit = limit;
 			return cast(typeof(return))move(this);
@@ -2049,7 +2069,7 @@ struct SelectOperation(
 		}
 
 		/// ditto
-		SelectOperation!(T, TSelect, hasWhere, true, true) opIndex(ulong[2] slice) return @trusted
+		SelectOperation!(T, TSelect, hasWhere, true, true) opIndex(ulong[2] slice) return scope @trusted
 		{
 			this._offset = slice[0];
 			this._limit = cast(long)slice[1] - cast(long)slice[0];
@@ -2057,13 +2077,13 @@ struct SelectOperation(
 		}
 
 		/// ditto
-		SelectOperation!(T, TSelect, hasWhere, true, true) range(ulong start, ulong endExclusive) return @safe
+		SelectOperation!(T, TSelect, hasWhere, true, true) range(ulong start, ulong endExclusive) return scope @safe
 		{
 			return this[start .. endExclusive];
 		}
 	}
 
-	private ffi.FFIOption!(ffi.FFILimitClause) ffiLimit() const @property @safe
+	private ffi.FFIOption!(ffi.FFILimitClause) ffiLimit() const scope @property @safe
 	{
 		ffi.FFIOption!(ffi.FFILimitClause) ret;
 		static if (hasLimit)
@@ -2081,7 +2101,7 @@ struct SelectOperation(
 		/// Fetches all result data into one array. Uses the GC to allocate the
 		/// data, so it's not needed to keep track of how long objects live by the
 		/// user.
-		TSelect[] array() @trusted
+		TSelect[] array() scope @trusted
 		{
 			enum fields = FilterLayoutFields!(T, TSelect);
 
@@ -2122,7 +2142,7 @@ struct SelectOperation(
 		/// Fetches all data into a range that can be iterated over or processed
 		/// with regular range functions. Does not allocate an array to store the
 		/// fetched data in, but may still use sparingly the GC in implementation.
-		auto stream() @trusted
+		auto stream() return scope @trusted
 		{
 			enum fields = FilterLayoutFields!(T, TSelect);
 
@@ -2156,7 +2176,7 @@ struct SelectOperation(
 	static if (!hasLimit)
 	{
 		/// Returns the first row of the result data or throws if no data exists.
-		TSelect findOne() @trusted
+		TSelect findOne() scope @trusted
 		{
 			enum fields = FilterLayoutFields!(T, TSelect);
 
@@ -2193,7 +2213,7 @@ struct SelectOperation(
 		}
 
 		/// Returns the first row of the result data or throws if no data exists.
-		Nullable!TSelect findOptional() @trusted
+		Nullable!TSelect findOptional() scope @trusted
 		{
 			enum fields = FilterLayoutFields!(T, TSelect);
 
@@ -2270,6 +2290,7 @@ private enum makeRtColumns = q{
 };
 
 /// Row streaming range implementation. (query_stream)
+@mustuse
 private struct RormStream(T, TSelect)
 {
 	import dorm.lib.util;
@@ -2308,14 +2329,14 @@ private struct RormStream(T, TSelect)
 	private JoinInformation joinInformation;
 	private bool started;
 
-	this(ffi.DBStreamHandle handle, JoinInformation joinInformation = JoinInformation.init) @trusted
+	this(return ffi.DBStreamHandle handle, JoinInformation joinInformation = JoinInformation.init) scope @trusted
 	{
 		this.handle = handle;
 		this.joinInformation = joinInformation;
 		currentHandle = RowHandleState(FreeableAsyncResult!(ffi.DBRowHandle).make);
 	}
 
-	~this() @trusted
+	~this() scope @trusted
 	{
 		if (started)
 		{
@@ -2330,17 +2351,17 @@ private struct RormStream(T, TSelect)
 
 	/// Helper to `foreach` over this entire stream using the row mapped to
 	/// `TSelect`.
-	int opApply(scope int delegate(TSelect) @system dg) @system
+	int opApply(scope int delegate(TSelect) @system dg) scope @system
 	{
 		return opApplyImpl(cast(int delegate(TSelect) @safe) dg);
 	}
 	/// ditto
-	int opApply(scope int delegate(TSelect) @safe dg) @safe
+	int opApply(scope int delegate(TSelect) @safe dg) scope @safe
 	{
 		return opApplyImpl(dg);
 	}
 	/// ditto
-	int opApplyImpl(scope int delegate(TSelect) @safe dg) @safe
+	int opApplyImpl(scope int delegate(TSelect) @safe dg) scope @safe
 	{
 		int result = 0;
 		for (; !this.empty; this.popFront())
@@ -2354,17 +2375,17 @@ private struct RormStream(T, TSelect)
 
 	/// Helper to `foreach` over this entire stream using an index (simply
 	/// counting up from 0 in D code) and the row mapped to `TSelect`.
-	int opApply(scope int delegate(size_t i, TSelect) @system dg) @system
+	int opApply(scope int delegate(size_t i, TSelect) @system dg) scope @system
 	{
 		return opApplyImpl(cast(int delegate(size_t i, TSelect) @safe) dg);
 	}
 	/// ditto
-	int opApply(scope int delegate(size_t i, TSelect) @safe dg) @safe
+	int opApply(scope int delegate(size_t i, TSelect) @safe dg) scope @safe
 	{
 		return opApplyImpl(dg);
 	}
 	/// ditto
-	int opApplyImpl(scope int delegate(size_t i, TSelect) @safe dg) @safe
+	int opApplyImpl(scope int delegate(size_t i, TSelect) @safe dg) scope @safe
 	{
 		int result = 0;
 		size_t i;
@@ -2381,7 +2402,7 @@ private struct RormStream(T, TSelect)
 	/// and returns the current row.
 	///
 	/// Implements the standard D range interface.
-	auto front() @trusted
+	auto front() scope @trusted
 	{
 		if (!started) nextIteration();
 		return unwrapRowResult!(T, TSelect)(currentHandle.result(), joinInformation);
@@ -2389,7 +2410,7 @@ private struct RormStream(T, TSelect)
 
 	/// Starts the iteration if it hasn't already, waits until data is there
 	/// and returns if there is any data left to be read using `front`.
-	bool empty() @trusted
+	bool empty() scope @trusted
 	{
 		if (!started) nextIteration();
 		currentHandle.impl.waitAndThrow();
@@ -2399,12 +2420,12 @@ private struct RormStream(T, TSelect)
 	/// Starts the iteration if it hasn't already, waits until the current
 	/// request is finished and skips the current row, so empty and front can
 	/// be called next.
-	void popFront() @trusted
+	void popFront() scope @trusted
 	{
 		if (!started) nextIteration();
 		currentHandle.impl.waitAndThrow();
 		if (currentHandle.done)
-			throw new Exception("attempted to run popFront on ended stream");
+			assert(false, "attempted to run popFront on ended stream");
 		else if (currentHandle.impl.error)
 			throw currentHandle.impl.error;
 		else
@@ -2415,7 +2436,7 @@ private struct RormStream(T, TSelect)
 		}
 	}
 
-	private void nextIteration() @trusted
+	private void nextIteration() scope @trusted
 	{
 		started = true;
 		ffi.rorm_stream_get_row(handle, &rowCallback, cast(void*)&currentHandle);
@@ -2428,7 +2449,7 @@ private struct RormStream(T, TSelect)
 /// used, into the TSelect datatype. TSelect may be a DormPatch or the model T
 /// directly. This is mostly used internally. Expect changes to this API until
 /// there is a stable API.
-TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row, JoinInformation ji) @safe
+TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, scope JoinInformation ji) @safe
 {
 	auto base = unwrapRowResultImpl!(T, TSelect)(row, "__");
 	if (ji.joins.length)
@@ -2452,7 +2473,7 @@ TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row, JoinInformation ji) @sa
 }
 
 /// ditto
-TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row) @safe
+TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row) @safe
 {
 	return unwrapRowResultImpl!(T, TSelect, false)(row, null);
 }
@@ -2460,7 +2481,7 @@ TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row) @safe
 /// Unwraps the row like the other unwrap methods, but prefixes all fields with
 /// `<placeholder>_`, so for example placeholder `foo` and field `user` would
 /// result in `foo_user`.
-TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row, string placeholder) @safe
+TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, string placeholder) @safe
 {
 	scope placeholderDot = new char[placeholder.length + 1];
 	placeholderDot[0 .. placeholder.length] = placeholder;
@@ -2468,7 +2489,7 @@ TSelect unwrapRowResult(T, TSelect)(ffi.DBRowHandle row, string placeholder) @sa
 	return unwrapRowResultImpl!(T, TSelect)(row, (() @trusted => cast(string)placeholderDot)());
 }
 
-private TSelect unwrapRowResultImpl(T, TSelect)(ffi.DBRowHandle row, string columnPrefix) @safe
+private TSelect unwrapRowResultImpl(T, TSelect)(scope ffi.DBRowHandle row, string columnPrefix) @safe
 {
 	TSelect res;
 	static if (is(TSelect == class))
@@ -2489,8 +2510,8 @@ private TSelect unwrapRowResultImpl(T, TSelect)(ffi.DBRowHandle row, string colu
 }
 
 private T extractField(alias field, T, string errInfo)(
-	ffi.DBRowHandle row,
-	ref ffi.RormError error,
+	scope ffi.DBRowHandle row,
+	ref scope ffi.RormError error,
 	string columnPrefix
 ) @trusted
 {
@@ -2554,7 +2575,7 @@ private T extractField(alias field, T, string errInfo)(
 	}
 }
 
-private T fieldInto(T, string errInfo, From)(scope From v, ref ffi.RormError error) @safe
+private T fieldInto(T, string errInfo, From)(scope From v, ref scope ffi.RormError error) @safe
 {
 	import dorm.lib.ffi : FFIArray, FFIOption;
 	import std.typecons : Nullable;
