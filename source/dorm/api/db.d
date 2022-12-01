@@ -1813,7 +1813,7 @@ struct UpdateOperation(
 
 					typeof(this) set(ModelRef.PrimaryKeyType value) return scope
 					{
-						static immutable columnName = ModelRef.primaryKeyColumnName;
+						static immutable columnName = field.columnName;
 						updates ~= ffi.FFIUpdate(
 							ffi.ffi(columnName),
 							conditionValue!field(value)
@@ -1823,7 +1823,7 @@ struct UpdateOperation(
 
 					typeof(this) set(ModelRef.TSelect value) return scope
 					{
-						static immutable columnName = ModelRef.primaryKeyColumnName;
+						static immutable columnName = field.columnName;
 						updates ~= ffi.FFIUpdate(
 							ffi.ffi(columnName),
 							conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
@@ -1835,7 +1835,7 @@ struct UpdateOperation(
 					{
 						typeof(this) set(ModelRef.TModel value) return scope
 						{
-							static immutable columnName = ModelRef.primaryKeyColumnName;
+							static immutable columnName = field.columnName;
 							updates ~= ffi.FFIUpdate(
 								ffi.ffi(columnName),
 								conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
