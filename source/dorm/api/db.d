@@ -1047,7 +1047,7 @@ struct PopulateBuilder(T)
 		}
 	}
 
-	mixin DynamicMissingMemberErrorHelper!"populate builder";
+	mixin DynamicMissingMemberErrorHelper!"populate reference field";
 }
 
 /// This MUST be mixed in at the end to show proper members
@@ -1057,7 +1057,7 @@ private mixin template DynamicMissingMemberErrorHelper(string fieldName, string 
 	{
 		import std.string : join;
 
-		enum available = [__traits(allMembers, typeof(this))][0 .. $ - 1].filterBuiltins;
+		enum available = PublicMembers!(typeof(this)).filterBuiltins;
 
 		enum suggestion = findSuggestion(available, member);
 		enum suggestionMsg = suggestion.length ? "\n\n\t\tDid you mean " ~ suggestion ~ "?" : "";
@@ -1070,13 +1070,21 @@ private mixin template DynamicMissingMemberErrorHelper(string fieldName, string 
 	}
 }
 
+private enum PublicMembers(T) = {
+	string[] ret;
+	static foreach (field; __traits(allMembers, T))
+		static if (__traits(getProtection, __traits(getMember, T, field)) != "private")
+			ret ~= field;
+	return ret;
+}();
+
 private mixin template DisallowOperators(string typeName)
 {
 	auto opBinary(string op, R, string file = __FILE__, size_t line = __LINE__)(const R rhs)
 	const @safe pure nothrow @nogc
 	{
 		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
-			~ "You are not supposed to use operators like '" ~ .op ~ "' on "
+			~ "You are not supposed to use operators like '" ~ op ~ "' on "
 			~ typeName ~ "! Use the operation fields on this instead.");
 		static assert(false, "See DORM error above.");
 	}
@@ -1085,7 +1093,7 @@ private mixin template DisallowOperators(string typeName)
 	const @safe pure nothrow @nogc
 	{
 		pragma(msg, errorBoldPrefix ~ file ~ "(" ~ line.to!string ~ "): " ~ supplErrorWithFilePrefix
-			~ "You are not supposed to use operators like '" ~ .op ~ "' on "
+			~ "You are not supposed to use operators like '" ~ op ~ "' on "
 			~ typeName ~ "! Use the operation fields on this instead.");
 		static assert(false, "See DORM error above.");
 	}
@@ -1106,7 +1114,7 @@ private string[] filterBuiltins(string[] members)
 	import std.algorithm : among, remove;
 
 	foreach_reverse (i, member; members)
-		if (member.among("__ctor", "__dtor"))
+		if (member.among("__ctor", "__dtor", "opDispatch"))
 			members = members.remove(i);
 	return members;
 }
