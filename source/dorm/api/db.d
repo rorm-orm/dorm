@@ -2239,7 +2239,7 @@ struct SelectOperation(
 		builder.builderData = &data;
 		data.joinInformation = move(joinInformation);
 		foreach (populates; callback(builder))
-			joinInformation.joinSuppl[populates.idx].include = true;
+			data.joinInformation.joinSuppl[populates.idx].include = true;
 		joinInformation = move(data.joinInformation);
 		return move(this);
 	}
