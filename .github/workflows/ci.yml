@@ -1,9 +1,11 @@
 name: Building & Testing
 on:
   push:
+    branches: [main]
     paths-ignore:
       - "*.md"
   pull_request:
+    branches: [main]
 
 defaults:
   run:
@@ -126,11 +128,11 @@ jobs:
 
       - name: Install MySQL client to clear DB in tests
         if: ${{ matrix.config == 'mysql' }}
-        run: sudo apt install mariadb-client
+        run: sudo apt update && sudo apt install mariadb-client
 
       - name: Install PostgreSQL client to clear DB in tests
         if: ${{ matrix.config == 'postgres' }}
-        run: sudo apt install postgresql-client
+        run: sudo apt update && sudo apt install postgresql-client
 
       - name: Build & test dorm
         run: dub build && dub test
