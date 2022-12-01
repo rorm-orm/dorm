@@ -224,8 +224,8 @@ jobs:
         continue-on-error: true
         id: testing
 
-      - name: Create new issue for failed changes
-        run: pip3 install requests && cat stderr.txt && ISSUE_TITLE="Building and testing failed for dorm (exit code $(cat exit_code))" python3 .github/create_issue.py
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        if: ${{ steps.testing.outcome == 'failure' }}
+      # - name: Create new issue for failed changes
+      #   run: pip3 install requests && cat stderr.txt && ISSUE_TITLE="Building and testing failed for dorm (exit code $(cat exit_code))" python3 .github/create_issue.py
+      #   env:
+      #     GITHUB_TOKEN: ${{ github.token }}
+      #   if: ${{ steps.testing.outcome == 'failure' }}
