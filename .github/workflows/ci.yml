@@ -49,7 +49,7 @@ jobs:
   run-tests-db:
     name: Build and test DORM with external DB
     runs-on: ubuntu-latest
-    needs: run-tests
+    # needs: run-tests
     strategy:
       fail-fast: false
       matrix:
@@ -126,11 +126,11 @@ jobs:
 
       - name: Install MySQL client to clear DB in tests
         if: ${{ matrix.config == 'mysql' }}
-        run: apt install mariadb-client
+        run: sudo apt install mariadb-client
 
-      - name: Install MySQL client to clear DB in tests
+      - name: Install PostgreSQL client to clear DB in tests
         if: ${{ matrix.config == 'postgres' }}
-        run: apt install postgresql-client
+        run: sudo apt install postgresql-client
 
       - name: Build & test dorm
         run: dub build && dub test
