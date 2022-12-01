@@ -56,43 +56,43 @@ jobs:
         include:
           - image: mariadb:10.9
             health_cmd: "mysqladmin ping"
-            config: mysql.toml
+            config: mysql
             compiler: dmd-latest
           - image: mariadb:10.6
             health_cmd: "mysqladmin ping"
-            config: mysql.toml
+            config: mysql
             compiler: dmd-latest
           - image: postgres:15
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: dmd-latest
           - image: postgres:13
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: dmd-latest
           - image: postgres:11
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: dmd-latest
           - image: mariadb:10.9
             health_cmd: "mysqladmin ping"
-            config: mysql.toml
+            config: mysql
             compiler: ldc-latest
           - image: mariadb:10.6
             health_cmd: "mysqladmin ping"
-            config: mysql.toml
+            config: mysql
             compiler: ldc-latest
           - image: postgres:15
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: ldc-latest
           - image: postgres:13
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: ldc-latest
           - image: postgres:11
             health_cmd: pg_isready
-            config: postgres.toml
+            config: postgres
             compiler: ldc-latest
 
     services:
@@ -124,6 +124,14 @@ jobs:
         with:
           compiler: ${{ matrix.compiler }}
 
+      - name: Install MySQL client to clear DB in tests
+        if: ${{ matrix.config == 'mysql' }}
+        run: apt install mariadb-client
+
+      - name: Install MySQL client to clear DB in tests
+        if: ${{ matrix.config == 'postgres' }}
+        run: apt install postgresql-client
+
       - name: Build & test dorm
         run: dub build && dub test
 
@@ -132,7 +140,11 @@ jobs:
         working-directory: testapp
 
       - name: Prepare the integration tests
-        run: for i in $(find -maxdepth 1 -type d); do cp -v ../.github/${{ matrix.config }} $i/database.toml; done
+        run: |
+          for i in $(find -maxdepth 1 -type d); do
+            cp -v ../.github/${{ matrix.config }}.toml $i/database.toml
+            cp -v ../.github/${{ matrix.config }}.sh $i/.pre-run-hook.sh
+          done
         working-directory: integration-tests
 
       - name: Run integration tests
