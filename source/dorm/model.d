@@ -25,7 +25,7 @@ import std.traits;
 abstract class Model
 {
     /// Default constructor. Runs value constructors. (`@constructValue` UDAs)
-    this(this This)()
+    this(this This)() @safe
     {
         applyConstructValue!This();
     }
@@ -44,29 +44,14 @@ abstract class Model
     /// Explicitly calls value constructors. (`@constructValue` UDAs)
     /// This is already implicitly called by the default constructor and is
     /// probably not needed to be called manually.
-    void applyConstructValue(this This)()
+    void applyConstructValue(this This)() @safe
     {
-        enum constructorFuncs = {
-            ConstructValueRef[] ret;
-            foreach (ref field; DormFields!This)
-            {
-                foreach (ref annotation; field.internalAnnotations)
-                {
-                    annotation.match!(
-                        (ConstructValueRef ctor) {
-                            ret ~= ctor;
-                        },
-                        (_) {}
-                    );
-                }
-            }
-            return ret;
-        }();
+        enum constructorFuncs = DormModelConstructors!This;
         static if (constructorFuncs.length)
         {
-            auto t = cast(This)this;
+            This t = cast(This)this;
             static foreach (fn; constructorFuncs)
-                runValueConstructorImpl!(fn.rid)(t);
+                runValueConstructorImpl!fn(t);
         }
     }
 
@@ -161,7 +146,7 @@ private static bool runValidatorImpl(string field, T)(T t)
     }
 }
 
-private static bool runValueConstructorImpl(string field, T)(T t)
+private static bool runValueConstructorImpl(string field, T)(T t) @safe
 {
     alias fieldAlias = mixin("t." ~ field);
     alias attributes = __traits(getAttributes, fieldAlias);

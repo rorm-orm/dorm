@@ -95,6 +95,15 @@ version(none) static struct ManyToManyField(alias idOrModel)
  */
 static template ModelRef(alias idOrPatch)
 {
+	static if (is(idOrPatch : Model)
+		&& !__traits(compiles, typeof(IdAliasFromIdOrPatch!idOrPatch))
+		&& !__traits(compiles, LogicalFields!idOrPatch))
+		pragma(msg, __FILE__ ~ "(" ~ __LINE__.stringof ~ "): Hint: if this field fails because of a circular reference, "
+			~ "refer to the field directly instead of refering to a model:\n"
+			~ "\tModelRef!(" ~ __traits(identifier, idOrPatch) ~ ".remotePrimaryKey) field;\n"
+			~ "\n"
+			~ "\tThis is a currently known limitation that's unlikely to be fixed soon.\n"
+			~ "\t--------------------------");
 	alias primaryKeyAlias = IdAliasFromIdOrPatch!idOrPatch;
 	alias TPatch = PatchFromIdOrPatch!idOrPatch;
 	alias T = ModelFromSomePatch!TPatch;
@@ -107,7 +116,8 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 	alias TModel = _TModel;
 	alias TSelect = _TSelect;
 	alias primaryKeyAlias = id;
-	enum primaryKeyField = DormField!(_TModel, __traits(identifier, id));
+	enum primaryKeySourceName = __traits(identifier, id);
+	enum primaryKeyColumnName = DormColumnNameImpl!primaryKeyAlias;
 	alias PrimaryKeyType = typeof(primaryKeyAlias);
 
 	/// The actual data stored in the DB field. Can be manipulated manually to
@@ -158,7 +168,7 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 	/// require this ModelRef to be populated.
 	bool refersTo(const TModel other) const
 	{
-		return foreignKey == mixin("other.", primaryKeyField.sourceColumn);
+		return foreignKey == mixin("other.", primaryKeySourceName);
 	}
 
 	static if (!is(TModel == TSelect))

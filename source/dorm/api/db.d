@@ -46,6 +46,8 @@ private enum maxJoins = 256;
  */
 struct BareConfiguration
 {
+	import mir.serde : serdeKeys;
+
 	// make sure you put custom fields before database!
 
 	/// only member, database settings
@@ -1227,7 +1229,7 @@ private mixin template ForeignJoinHelper()
 			auto lhs = new ffi.FFICondition();
 			auto rhs = new ffi.FFICondition();
 			lhs.type = ffi.FFICondition.Type.Value;
-			lhs.value = columnValue(placeholder, ModelRef.primaryKeyField.columnName);
+			lhs.value = columnValue(placeholder, ModelRef.primaryKeyColumnName);
 			rhs.type = ffi.FFICondition.Type.Value;
 			rhs.value = columnValue(srcTableName, field.columnName);
 			condition.binaryCondition.lhs = lhs;
@@ -1292,6 +1294,42 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder, `",
 				field.columnName,
 				"`); }");
+		}
+	}
+
+	static if (!__traits(hasMember, typeof(this), "refersTo"))
+	{
+		/// Compares the foreign key to be equal to the primary key of `other`
+		Condition refersTo(T)(T other)
+		if (is(T == RefDB) || isSomePatch!T)
+		{
+			mixin ValidatePatch!(T, RefDB);
+
+			static assert(is(typeof(mixin("other.", ModelRef.primaryKeySourceName))),
+				"Primary key '" ~ ModelRef.primaryKeySourceName
+				~ "' must be included in patch type "
+				~ T.stringof ~ " in order to be a valid argument to remove!");
+
+			return mixin(ModelRef.primaryKeySourceName ~ ".equals(other."
+				~ ModelRef.primaryKeySourceName ~ ")");
+		}
+	}
+
+	static if (!__traits(hasMember, typeof(this), "notRefersTo"))
+	{
+		/// Compares the foreign key to be not equal to the primary key of `other`
+		Condition notRefersTo(T)(T other)
+		if (is(T == RefDB) || isSomePatch!T)
+		{
+			mixin ValidatePatch!(T, RefDB);
+
+			static assert(is(typeof(mixin("other.", ModelRef.primaryKeySourceName))),
+				"Primary key '" ~ ModelRef.primaryKeySourceName
+				~ "' must be included in patch type "
+				~ T.stringof ~ " in order to be a valid argument to remove!");
+
+			return mixin(ModelRef.primaryKeySourceName ~ ".notEquals(other."
+				~ DormField!(RefDB, ModelRef.primaryKeySourceName).sourceColumn ~ ")");
 		}
 	}
 

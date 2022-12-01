@@ -113,11 +113,11 @@ static template IdAliasFromIdOrPatch(alias idOrPatch)
 {
 	static if (is(idOrPatch : Model))
 		alias IdAliasFromIdOrPatch =
-			__traits(getMember, idOrPatch, DormPrimaryKey!idOrPatch.sourceColumn);
+			__traits(getMember, idOrPatch, DormPrimaryKeyName!idOrPatch);
 	else static if (isSomePatch!idOrPatch)
 		alias IdAliasFromIdOrPatch =
 			__traits(getMember, idOrPatch,
-				DormPrimaryKey!(ModelFromSomePatch!idOrPatch).sourceColumn);
+				DormPrimaryKeyName!(ModelFromSomePatch!idOrPatch));
 	else static if (is(__traits(parent, idOrPatch) : Model)
 		|| isSomePatch!(__traits(parent, idOrPatch)))
 		alias IdAliasFromIdOrPatch = idOrPatch;
@@ -139,7 +139,7 @@ static template IdAliasFromIdOrModel(alias idOrModel)
 {
 	static if (is(idOrModel : Model))
 		alias IdAliasFromIdOrModel =
-			__traits(getMember, idOrModel, DormPrimaryKey!idOrModel.sourceColumn);
+			__traits(getMember, idOrModel, DormPrimaryKeyName!idOrModel);
 	else static if (is(__traits(parent, idOrModel) : Model))
 		alias IdAliasFromIdOrModel = idOrModel;
 	else

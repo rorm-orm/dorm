@@ -54,7 +54,7 @@ private void processModel(TModel : Model, SourceLocation loc)(
 
 private enum DormLayoutImpl(TModel : Model) = function() {
 	ModelFormat serialized;
-	serialized.tableName = TModel.stringof.toSnakeCase;
+	serialized.tableName = DormModelTableName!TModel;
 
 	alias attributes = __traits(getAttributes, TModel);
 
@@ -68,18 +68,15 @@ private enum DormLayoutImpl(TModel : Model) = function() {
 
 	string errors;
 
-	static foreach (field; LogicalFields!TModel)
+	static foreach (field; LogicalFields!(TModel, 2))
 	{
-		static if (__traits(getProtection, __traits(getMember, TModel, field)) == "public")
+		try
 		{
-			try
-			{
-				processField!(TModel, field, field)(serialized);
-			}
-			catch (Exception e)
-			{
-				errors ~= "\n\t" ~ e.msg;
-			}
+			processField!(TModel, field, field)(serialized);
+		}
+		catch (Exception e)
+		{
+			errors ~= "\n\t" ~ e.msg;
 		}
 	}
 
@@ -105,6 +102,9 @@ template DormLayout(TModel : Model)
 		enum ModelFormat DormLayout = Impl.ret;
 }
 
+/// Equivalent to `DormLayout!TModel.tableName`
+enum DormModelTableName(TModel : Model) = TModel.stringof.toSnakeCase;
+
 enum DormFields(TModel : Model) = DormLayout!TModel.fields;
 enum DormForeignKeys(TModel : Model) = (() {
 	auto all = DormFields!TModel;
@@ -120,6 +120,49 @@ enum DormField(TModel : Model, string sourceName) = DormFields!TModel[DormFieldI
 
 enum DormPrimaryKeyIndex(TModel : Model) = findPrimaryFieldIdx(DormFields!TModel);
 enum DormPrimaryKey(TModel : Model) = DormFields!TModel[DormPrimaryKeyIndex!TModel];
+
+/// Equivalent to DormPrimaryKey!TModel.sourceColumn, but does not analyze the
+/// model, thus avoiding cyclic lookups. Note: does not do any sanity checks,
+/// like checking if there are two primary keys.
+template DormPrimaryKeyName(TModel : Model)
+{
+	static foreach (field; LogicalFields!TModel)
+		static if (hasUDA!(__traits(getMember, TModel, field), primaryKey))
+			enum DormPrimaryKeyName = field;
+}
+
+/// Used internally, basically converts the field name to snake case or returns
+/// the @columnName value if the field has been annotated with it.
+static template DormColumnNameImpl(alias field)
+{
+	enum DormColumnNameImpl = {
+		string ret = __traits(identifier, field).toSnakeCase;
+
+		alias attributes = __traits(getAttributes, field);
+		static foreach (attribute; attributes)
+			static if (is(typeof(attribute) == columnName))
+				ret = attribute.name;
+		return ret;
+	}();
+}
+
+/// Returns all fields with `@constructValue` annotations. Used internally in
+/// Model to determine which fields to look at in the constructor.
+enum string[] DormModelConstructors(TModel : Model) = {
+	string[] ret;
+	static foreach (field; LogicalFields!(TModel, 1))
+	{{
+		alias fieldAlias = __traits(getMember, TModel, field);
+
+		alias attributes = __traits(getAttributes, fieldAlias);
+		static foreach (attribute; attributes)
+		{{
+			static if (is(attribute == constructValue!fn, alias fn))
+				ret ~= field;
+		}}
+	}}
+	return ret;
+}();
 
 enum DormListFieldsForError(TModel : Model) = formatFieldList(DormFields!TModel);
 
@@ -147,8 +190,11 @@ private auto formatFieldList(ModelFormat.Field[] fields)
 	return ret;
 }
 
-template LogicalFields(TModel)
+/// Returns the name of all public member fields, through all base classes (i.e.
+/// returns identifiers of public .tupleof members)
+template LogicalFields(TModel, int cacheHack = 0)
 {
+	// cacheHack exists because DormLayout needs a different cache due to cyclic things
 	static if (is(TModel : Model))
 		alias Classes = AliasSeq!(TModel, BaseClassesTuple!TModel);
 	else
@@ -156,10 +202,86 @@ template LogicalFields(TModel)
 	alias LogicalFields = AliasSeq!();
 
 	static foreach_reverse (Class; Classes)
-		LogicalFields = AliasSeq!(LogicalFields, FieldNameTuple!Class);
+	{
+		static foreach (field; __traits(derivedMembers, Class))
+		{
+			static if (
+				// isTemplate does not compile for circular references, but those are assumed to be fields
+				!__traits(compiles, __traits(isTemplate, __traits(getMember, Class, field)))
+				|| (is(typeof(__traits(getMember, Class, field)))
+				&& !is(typeof(&__traits(getMember, Class, field)))
+				&& !__traits(isTemplate, __traits(getMember, Class, field))
+				&& __traits(getProtection, __traits(getMember, Class, field)) == "public"))
+				LogicalFields = AliasSeq!(LogicalFields, field);
+		}
+	}
+}
+
+private struct ProcessFieldResult
+{
+	bool include, checkForOtherPrimaryKey;
+	ModelFormat.Field field;
 }
 
 private void processField(TModel, string fieldName, string directFieldName)(ref ModelFormat serialized)
+{
+	alias fieldAlias = __traits(getMember, TModel, directFieldName);
+
+	ProcessFieldResult result = processFieldImpl!(TModel, fieldName, directFieldName)();
+
+	static if (hasUDA!(fieldAlias, embedded))
+	{
+		serialized.embeddedStructs ~= fieldName;
+		alias TSubModel = typeof(fieldAlias);
+		static foreach (subfield; LogicalFields!(TSubModel, 2))
+		{
+			processField!(TSubModel, fieldName ~ "." ~ subfield, subfield)(serialized);
+		}
+	}
+
+	with (result) if (include)
+	{
+		if (checkForOtherPrimaryKey)
+		{
+			foreach (other; serialized.fields)
+			{
+				if (other.isPrimaryKey)
+					throw new DormModelException("Duplicate primary key found in Model " ~ TModel.stringof
+						~ ":\n- first defined here:\n"
+						~ other.sourceColumn ~ " in " ~ other.definedAt.toString
+						~ "\n- then attempted to redefine here:\n"
+						~ typeof(fieldAlias).stringof ~ " " ~ fieldName ~ " in " ~ field.definedAt.toString
+						~ "\nMaybe you wanted to define a `TODO: compositeKey`?");
+			}
+		}
+
+		// https://github.com/myOmikron/drorm/issues/8
+		if (field.hasFlag(AnnotationFlag.autoIncrement) && !field.hasFlag(AnnotationFlag.primaryKey))
+				throw new DormModelException(field.sourceReferenceName(TModel.stringof)
+					~ " has @autoIncrement annotation, but is missing required @primaryKey annotation.");
+
+		if (field.type == InvalidDBType)
+			throw new DormModelException(SourceLocation(__traits(getLocation, fieldAlias)).toErrorString
+				~ "Cannot resolve DORM Model DBType from " ~ typeof(fieldAlias).stringof
+				~ " `" ~ directFieldName ~ "` in " ~ TModel.stringof);
+
+		foreach (ai, lhs; field.annotations)
+		{
+			foreach (bi, rhs; field.annotations)
+			{
+				if (ai == bi) continue;
+				if (!lhs.isCompatibleWith(rhs))
+					throw new DormModelException("Incompatible annotation: "
+						~ lhs.to!string ~ " conflicts with " ~ rhs.to!string
+						~ " on " ~ field.sourceReferenceName(TModel.stringof));
+			}
+		}
+
+		serialized.fields ~= field;
+	}
+}
+
+private ProcessFieldResult processFieldImpl(TModel, string fieldName, string directFieldName)()
 {
 	import uda = dorm.annotations;
 
@@ -187,6 +309,8 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		enum isNullable = false;
 	}
 
+	bool checkForOtherPrimaryKey = false;
+
 	bool explicitNotNull = false;
 	bool nullable = false;
 	bool mustBeNullable = false;
@@ -202,11 +326,12 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		alias _id, _TModel, _TSelect))
 	{
 		ForeignKeyImpl foreignKeyImpl;
-		enum foreignKeyInfo = UnnullType.primaryKeyField;
-		field.type = foreignKeyInfo.type;
-		field.annotations ~= foreignKeyInfo.foreignKeyAnnotations;
-		foreignKeyImpl.column = foreignKeyInfo.columnName;
-		foreignKeyImpl.table = DormLayout!_TModel.tableName;
+		auto foreignKeyInfo = processFieldImpl!(_TModel, UnnullType.primaryKeySourceName, UnnullType.primaryKeySourceName);
+		assert(foreignKeyInfo.include, "Refering to a foreign key that's not included in the result!");
+		field.type = foreignKeyInfo.field.type;
+		field.annotations ~= foreignKeyInfo.field.foreignKeyAnnotations;
+		foreignKeyImpl.column = foreignKeyInfo.field.columnName;
+		foreignKeyImpl.table = DormModelTableName!_TModel;
 	}
 
 	enum bool isForeignKey = is(typeof(foreignKeyImpl));
@@ -225,7 +350,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 	}
 
 	static foreach (attribute; attributes)
-	{
+	{{
 		static if (__traits(isSame, attribute, uda.autoCreateTime))
 		{
 			field.type = ModelFormat.Field.DBType.datetime;
@@ -247,17 +372,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		{
 			nullable = true;
 			field.annotations ~= DBAnnotation(AnnotationFlag.primaryKey);
-
-			foreach (other; serialized.fields)
-			{
-				if (other.isPrimaryKey)
-					throw new DormModelException("Duplicate primary key found in Model " ~ TModel.stringof
-						~ ":\n- first defined here:\n"
-						~ other.sourceColumn ~ " in " ~ other.definedAt.toString
-						~ "\n- then attempted to redefine here:\n"
-						~ typeof(fieldAlias).stringof ~ " " ~ fieldName ~ " in " ~ field.definedAt.toString
-						~ "\nMaybe you wanted to define a `TODO: compositeKey`?");
-			}
+			checkForOtherPrimaryKey = true;
 		}
 		else static if (__traits(isSame, attribute, uda.autoIncrement))
 		{
@@ -270,19 +385,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		}
 		else static if (__traits(isSame, attribute, uda.embedded))
 		{
-			static if (is(typeof(fieldAlias) == struct))
-			{
-				serialized.embeddedStructs ~= fieldName;
-				alias TSubModel = typeof(fieldAlias);
-				static foreach (subfield; LogicalFields!TSubModel)
-				{
-					static if (__traits(getProtection, __traits(getMember, TSubModel, subfield)) == "public")
-					{
-						processField!(TSubModel, fieldName ~ "." ~ subfield, subfield)(serialized);
-					}
-				}
-			}
-			else
+			static if (!is(typeof(fieldAlias) == struct))
 				static assert(false, "@embedded is only supported on structs");
 			include = false;
 		}
@@ -308,9 +411,19 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 			{
 				setDefaultValue(__traits(getMember, TModel.init, directFieldName));
 			}
-			else
+			else static if (__traits(compiles, __traits(getMember, new TModel(), directFieldName)))
 			{
 				setDefaultValue(__traits(getMember, new TModel(), directFieldName));
+			}
+			else
+			{
+				if (include)
+				{
+					throw new DormModelException(field.sourceReferenceName(TModel.stringof)
+						~ " is annotated with `@defaultFromInit`, but failed construction. "
+						~ "Consider moving this field into a struct and using `@embedded` to use it "
+						~ "or remove incompatible attributes. (Implicit Patches work as well)");
+				}
 			}
 		}
 		else static if (is(typeof(attribute) == maxLength)
@@ -347,7 +460,7 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 		{
 			static assert(false, "Unsupported attribute " ~ attribute.stringof ~ " on " ~ TModel.stringof ~ "." ~ fieldName);
 		}
-	}
+	}}
 
 	static if (isForeignKey)
 		field.annotations ~= DBAnnotation(foreignKeyImpl);
@@ -364,31 +477,13 @@ private void processField(TModel, string fieldName, string directFieldName)(ref 
 			}
 			field.annotations = DBAnnotation(AnnotationFlag.notNull) ~ field.annotations;
 		}
-
-		// https://github.com/myOmikron/drorm/issues/8
-		if (field.hasFlag(AnnotationFlag.autoIncrement) && !field.hasFlag(AnnotationFlag.primaryKey))
-				throw new DormModelException(field.sourceReferenceName(TModel.stringof)
-					~ " has @autoIncrement annotation, but is missing required @primaryKey annotation.");
-
-		if (field.type == InvalidDBType)
-			throw new DormModelException(SourceLocation(__traits(getLocation, fieldAlias)).toErrorString
-				~ "Cannot resolve DORM Model DBType from " ~ typeof(fieldAlias).stringof
-				~ " `" ~ directFieldName ~ "` in " ~ TModel.stringof);
-
-		foreach (ai, lhs; field.annotations)
-		{
-			foreach (bi, rhs; field.annotations)
-			{
-				if (ai == bi) continue;
-				if (!lhs.isCompatibleWith(rhs))
-					throw new DormModelException("Incompatible annotation: "
-						~ lhs.to!string ~ " conflicts with " ~ rhs.to!string
-						~ " on " ~ field.sourceReferenceName(TModel.stringof));
-			}
-		}
-
-		serialized.fields ~= field;
 	}
+
+	return ProcessFieldResult(
+		include,
+		checkForOtherPrimaryKey,
+		field
+	);
 }
 
 private string toSnakeCase(string s)
@@ -930,6 +1025,66 @@ unittest
 		DBAnnotation(maxLength(255)),
 		DBAnnotation(ForeignKeyImpl(
 			"user", "username",
+			restrict, restrict
+		))
+	]);
+}
+
+unittest
+{
+	// cyclic ref
+	struct Mod
+	{
+		class User : Model
+		{
+			@Id long id;
+
+			ModelRef!(Project.otherId) favoriteProject;
+		}
+
+		class Project : Model
+		{
+			@primaryKey @maxLength(123) string otherId;
+
+			ModelRef!(User.id) author;
+		}
+	}
+
+	auto mod = processModelsToDeclarations!Mod;
+	assert(mod.models.length == 2);
+	auto m = mod.models[0];
+	assert(m.fields.length == 2);
+
+	assert(m.fields[0].columnName == "id");
+	assert(m.fields[0].annotations == [
+		DBAnnotation(AnnotationFlag.primaryKey),
+		DBAnnotation(AnnotationFlag.autoIncrement),
+	]);
+
+	assert(m.fields[1].columnName == "favorite_project");
+	assert(m.fields[1].annotations == [
+		DBAnnotation(AnnotationFlag.notNull),
+		DBAnnotation(maxLength(123)),
+		DBAnnotation(ForeignKeyImpl(
+			"project", "other_id",
+			restrict, restrict
+		))
+	]);
+
+	m = mod.models[1];
+	assert(m.fields.length == 2);
+
+	assert(m.fields[0].columnName == "other_id");
+	assert(m.fields[0].annotations == [
+		DBAnnotation(AnnotationFlag.primaryKey),
+		DBAnnotation(maxLength(123)),
+	]);
+
+	assert(m.fields[1].columnName == "author");
+	assert(m.fields[1].annotations == [
+		DBAnnotation(AnnotationFlag.notNull),
+		DBAnnotation(ForeignKeyImpl(
+			"user", "id",
 			restrict, restrict
 		))
 	]);

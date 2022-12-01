@@ -29,6 +29,9 @@ auto defaultValue(T)(T value) if (isAllowedDefaultValueType!T)
 }
 alias PossibleDefaultValueTs = staticMap!(DefaultValue, AllowedDefaultValueTypes);
 
+/// Takes the default value from the D default value that's put on the field.
+///
+/// Incompatible with `@constructValue` and `@defaultValue`
 enum defaultFromInit;
 enum primaryKey;
 enum unique;
