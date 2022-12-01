@@ -154,9 +154,7 @@ struct MySQLConnectOptions
 struct DormDB
 {
 @safe:
-	private ffi.DBHandle handle;
-
-	@disable this();
+	private ffi.DBHandle _handle;
 
 	/**
 	 * Performs a Database connection (possibly in another thread) and returns
@@ -204,19 +202,30 @@ struct DormDB
 
 		scope dbHandleAsync = FreeableAsyncResult!(ffi.DBHandle).make;
 		ffi.rorm_db_connect(ffiOptions, dbHandleAsync.callback.expand);
-		handle = dbHandleAsync.result;
+		_handle = dbHandleAsync.result;
 	}
 
 	~this() @trusted
 	{
-		if (handle)
+		if (_handle)
 		{
-			ffi.rorm_db_free(handle);
-			handle = null;
+			ffi.rorm_db_free(_handle);
+			_handle = null;
 		}
 	}
 
 	@disable this(this);
+
+	debug
+	{
+		private ffi.DBHandle handle() const @property
+		{
+			assert(_handle !is null, "Attempted to operate on uninitialized DormDB, please call constructor first!");
+			return _handle;
+		}
+	}
+	else
+		private alias handle = _handle;
 
 	/// Starts a database transaction, on which most operations can be called.
 	///
