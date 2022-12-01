@@ -1272,27 +1272,29 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 
 	mixin ForeignJoinHelper;
 
-	static foreach (field; DormFields!RefDB)
+	static foreach (subfield; DormFields!RefDB)
 	{
-		static if (__traits(isSame, ModelRef.primaryKeyAlias, mixin("RefDB.", field.sourceColumn)))
+		static if (__traits(isSame, ModelRef.primaryKeyAlias, mixin("RefDB.", subfield.sourceColumn)))
 		{
 			mixin("ConditionBuilderField!(ModelRef.PrimaryKeyType, field) ",
-				field.sourceColumn.lastIdentifier,
+				subfield.sourceColumn.lastIdentifier,
 				"() @property @safe return { return ConditionBuilderField!(ModelRef.PrimaryKeyType, field)(srcTableName, `",
-				field.columnName, "`); }");
+				field.columnName, "`); }
+				
+				private alias _foreignKeyField = ", subfield.sourceColumn.lastIdentifier, ";");
 		}
-		else static if (field.isForeignKey)
+		else static if (subfield.isForeignKey)
 		{
-			mixin("ForeignModelConditionBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
-				field.sourceColumn.lastIdentifier,
+			mixin("ForeignModelConditionBuilderField!(ModelRefOf!(RefDB.", subfield.sourceColumn, "), subfield) ",
+				subfield.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
 		else
 		{
-			mixin("ConditionBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
-				field.sourceColumn.lastIdentifier,
+			mixin("ConditionBuilderField!(typeof(RefDB.", subfield.sourceColumn, "), subfield) ",
+				subfield.sourceColumn.lastIdentifier,
 				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder, `",
-				field.columnName,
+				subfield.columnName,
 				"`); }");
 		}
 	}
@@ -1310,7 +1312,7 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 				~ "' must be included in patch type "
 				~ T.stringof ~ " in order to be a valid argument to remove!");
 
-			return mixin(ModelRef.primaryKeySourceName ~ ".equals(other."
+			return mixin("_foreignKeyField.equals(other."
 				~ ModelRef.primaryKeySourceName ~ ")");
 		}
 	}
@@ -1328,7 +1330,7 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 				~ "' must be included in patch type "
 				~ T.stringof ~ " in order to be a valid argument to remove!");
 
-			return mixin(ModelRef.primaryKeySourceName ~ ".notEquals(other."
+			return mixin("_foreignKeyField.notEquals(other."
 				~ DormField!(RefDB, ModelRef.primaryKeySourceName).sourceColumn ~ ")");
 		}
 	}
@@ -1358,27 +1360,27 @@ struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field)
 
 	mixin ForeignJoinHelper;
 
-	static foreach (field; DormFields!RefDB)
+	static foreach (subfield; DormFields!RefDB)
 	{
-		static if (__traits(isSame, ModelRef.primaryKeyAlias, mixin("RefDB.", field.sourceColumn)))
+		static if (__traits(isSame, ModelRef.primaryKeyAlias, mixin("RefDB.", subfield.sourceColumn)))
 		{
 			mixin("OrderBuilderField!(ModelRef.PrimaryKeyType, field) ",
-				field.sourceColumn.lastIdentifier,
+				subfield.sourceColumn.lastIdentifier,
 				"() @property @safe return { return OrderBuilderField!(ModelRef.PrimaryKeyType, field)(srcTableName, `",
 				field.columnName, "`); }");
 		}
-		else static if (field.isForeignKey)
+		else static if (subfield.isForeignKey)
 		{
-			mixin("ForeignModelOrderBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
-				field.sourceColumn.lastIdentifier,
+			mixin("ForeignModelOrderBuilderField!(ModelRefOf!(RefDB.", subfield.sourceColumn, "), subfield) ",
+				subfield.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
 		else
 		{
-			mixin("OrderBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
-				field.sourceColumn.lastIdentifier,
+			mixin("OrderBuilderField!(typeof(RefDB.", subfield.sourceColumn, "), subfield) ",
+				subfield.sourceColumn.lastIdentifier,
 				"() @property @safe return { string placeholder = ensureJoined(); return typeof(return)(placeholder, `",
-				field.columnName,
+				subfield.columnName,
 				"`); }");
 		}
 	}
@@ -1420,12 +1422,12 @@ struct PopulateBuilderField(ModelRef, ModelFormat.Field field)
 		return [PopulateRef(ensureJoinedIdx)];
 	}
 
-	static foreach (field; DormFields!RefDB)
+	static foreach (subfield; DormFields!RefDB)
 	{
-		static if (field.isForeignKey)
+		static if (subfield.isForeignKey)
 		{
-			mixin("PopulateBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
-				field.sourceColumn.lastIdentifier,
+			mixin("PopulateBuilderField!(ModelRefOf!(RefDB.", subfield.sourceColumn, "), subfield) ",
+				subfield.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
 	}
