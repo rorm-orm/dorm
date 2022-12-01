@@ -47,7 +47,9 @@ mixin template ValidatePatch(Patch, TModel)
 	import std.traits : hasUDA;
 	import dorm.annotations : isDormFieldAttribute;
 
-	static if (!isImplicitPatch!(TModel, Patch))
+	static assert(is(TModel : Model), "Passed non-Model to ValidatePatch");
+
+	static if (!is(Patch == TModel) && !isImplicitPatch!(TModel, Patch))
 	{
 		static assert (hasUDA!(Patch, DormPatch!TModel), "Patch struct " ~ Patch.stringof
 			~ " must be annoated using DormPatch!(" ~ TModel.stringof ~ ") exactly once!");
