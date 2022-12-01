@@ -939,7 +939,7 @@ struct ConditionBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("ForeignModelConditionBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
+			mixin("ForeignModelConditionBuilderField!(ModelRefOf!(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
@@ -992,7 +992,7 @@ struct OrderBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("ForeignModelOrderBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
+			mixin("ForeignModelOrderBuilderField!(ModelRefOf!(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
@@ -1043,7 +1043,7 @@ struct PopulateBuilder(T)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("PopulateBuilderField!(typeof(T.", field.sourceColumn, "), field) ",
+			mixin("PopulateBuilderField!(ModelRefOf!(T.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { return typeof(return)(DormLayout!T.tableName, builderData); }");
 		}
@@ -1283,7 +1283,7 @@ struct ForeignModelConditionBuilderField(ModelRef, ModelFormat.Field field)
 		}
 		else static if (field.isForeignKey)
 		{
-			mixin("ForeignModelConditionBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+			mixin("ForeignModelConditionBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
@@ -1369,7 +1369,7 @@ struct ForeignModelOrderBuilderField(ModelRef, ModelFormat.Field field)
 		}
 		else static if (field.isForeignKey)
 		{
-			mixin("ForeignModelOrderBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+			mixin("ForeignModelOrderBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
@@ -1424,7 +1424,7 @@ struct PopulateBuilderField(ModelRef, ModelFormat.Field field)
 	{
 		static if (field.isForeignKey)
 		{
-			mixin("PopulateBuilderField!(typeof(RefDB.", field.sourceColumn, "), field) ",
+			mixin("PopulateBuilderField!(ModelRefOf!(RefDB.", field.sourceColumn, "), field) ",
 				field.sourceColumn.lastIdentifier,
 				"() @property return { string placeholder = ensureJoined(); return typeof(return)(placeholder, builderData); }");
 		}
@@ -2437,7 +2437,7 @@ private enum makeRtColumns = q{
 				if (suppl.include)
 				{
 					auto ffiPlaceholder = ffi.ffi(suppl.placeholder);
-					alias RefField = typeof(mixin("T.", fk.sourceColumn));
+					alias RefField = ModelRefOf!(mixin("T.", fk.sourceColumn));
 					enum filteredFields = FilterLayoutFields!(RefField.TModel, RefField.TSelect);
 					size_t start = rtColumns.length;
 					size_t i = 0;
@@ -2630,9 +2630,9 @@ TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, scope JoinInforma
 				if (suppl.include)
 				{
 					auto prefix = suppl.placeholder;
-					alias ModelRef = typeof(mixin("T.", fk.sourceColumn));
-					mixin("base.", fk.sourceColumn) =
-						unwrapRowResult!(ModelRef.TModel, ModelRef.TSelect)(row, prefix);
+					alias ModelRef = ModelRefOf!(mixin("T.", fk.sourceColumn));
+					mixin("base.", fk.sourceColumn) = ModelRef(
+						unwrapRowResult!(ModelRef.TModel, ModelRef.TSelect)(row, prefix));
 				}
 			}
 		}}

@@ -4,6 +4,8 @@ import dorm.declarative.conversion;
 import dorm.model;
 import dorm.types.patches;
 
+import std.typecons : Nullable;
+
 version(none) static struct ManyToManyField(alias idOrModel)
 {
 	alias T = ModelFromIdOrModel!idOrModel;
@@ -189,6 +191,15 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 			return foreignKey == __traits(child, other, primaryKeyAlias);
 		}
 	}
+}
+
+static template ModelRefOf(alias field)
+{
+	alias T = typeof(field);
+	static if (is(T == Nullable!U, U))
+		alias ModelRefOf = U;
+	else
+		alias ModelRefOf = T;
 }
 
 // TODO: need to figure out how to make BackRefs
