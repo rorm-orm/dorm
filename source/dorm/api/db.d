@@ -1795,15 +1795,54 @@ struct UpdateOperation(
 					~ "`, but it doesn't exist on Model `"
 					~ T.stringof ~ "`\n\tAvailable fields:" ~ DormListFieldsForError!T);
 
+				enum field = DormField!(T, FieldOrPatch[0]);
+
 				typeof(this) set(typeof(mixin("T.", FieldOrPatch[0])) value) return scope
 				{
-					enum field = DormField!(T, FieldOrPatch[0]);
 					static immutable columnName = field.columnName;
 					updates ~= ffi.FFIUpdate(
 						ffi.ffi(columnName),
 						conditionValue!field(value)
 					);
 					return move(this);
+				}
+
+				static if (field.isForeignKey)
+				{
+					alias ModelRef = ModelRefOf!(mixin("T.", FieldOrPatch[0]));
+
+					typeof(this) set(ModelRef.PrimaryKeyType value) return scope
+					{
+						static immutable columnName = ModelRef.primaryKeyColumnName;
+						updates ~= ffi.FFIUpdate(
+							ffi.ffi(columnName),
+							conditionValue!field(value)
+						);
+						return move(this);
+					}
+
+					typeof(this) set(ModelRef.TSelect value) return scope
+					{
+						static immutable columnName = ModelRef.primaryKeyColumnName;
+						updates ~= ffi.FFIUpdate(
+							ffi.ffi(columnName),
+							conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
+						);
+						return move(this);
+					}
+
+					static if (!is(ModelRef.TSelect == ModelRef.TModel))
+					{
+						typeof(this) set(ModelRef.TModel value) return scope
+						{
+							static immutable columnName = ModelRef.primaryKeyColumnName;
+							updates ~= ffi.FFIUpdate(
+								ffi.ffi(columnName),
+								conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
+							);
+							return move(this);
+						}
+					}
 				}
 			}
 		}
