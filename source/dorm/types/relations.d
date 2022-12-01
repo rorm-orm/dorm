@@ -127,6 +127,16 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 	private TSelect cached;
 	private bool resolved;
 
+	this(PrimaryKeyType foreignKey)
+	{
+		this.foreignKey = foreignKey;
+	}
+
+	this(TSelect value)
+	{
+		opAssign(value);
+	}
+
 	/// Returns: `true` if populated can be called, `false` otherwise.
 	bool isPopulated() const @property
 	{

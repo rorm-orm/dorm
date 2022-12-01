@@ -37,8 +37,15 @@ abstract class Model
         mixin ValidatePatch!(Patch, This);
 
         auto t = cast(This)this;
-        foreach (i, ref field; patch.tupleof)
-            __traits(getMember, t, Patch.tupleof[i].stringof) = field;
+        static if (isImplicitPatch!(This, Patch))
+        {
+            __traits(getMember, t, ImplicitPatchFieldName!(This, Patch)) = patch;
+        }
+        else
+        {
+            foreach (i, ref field; patch.tupleof)
+                __traits(getMember, t, Patch.tupleof[i].stringof) = field;
+        }
     }
 
     /// Explicitly calls value constructors. (`@constructValue` UDAs)
