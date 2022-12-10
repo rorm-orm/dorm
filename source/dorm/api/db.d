@@ -1715,9 +1715,15 @@ private struct JoinInformation
 struct UpdateOperation(
 	T : Model,
 	bool hasWhere = false,
+	bool hasAnySet = false,
+	bool runtimeCheck = false,
 )
 {
 @safe:
+	alias ThisWithWhere = UpdateOperation!(T, true, hasAnySet, runtimeCheck);
+	alias ThisWithSet = UpdateOperation!(T, hasWhere, true, runtimeCheck);
+	alias ThisWithSetAndRuntimeCheck = UpdateOperation!(T, hasWhere, true, true);
+
 	private const(DormDB)* db;
 	private ffi.DBTransactionHandle tx;
 	private ffi.FFICondition[] conditionTree;
@@ -1749,7 +1755,7 @@ struct UpdateOperation(
 		/// methods to combine conditions into more complex ones. You can also
 		/// choose to not use the builder object at all and integrate manually
 		/// constructed
-		UpdateOperation!(T, true) condition(
+		ThisWithWhere condition(
 			scope ConditionBuilderCallback callback
 		) return scope @trusted
 		{
@@ -1769,10 +1775,10 @@ struct UpdateOperation(
 	{
 		static if (FieldOrPatch.length == 0)
 		{
-			typeof(this) set(P)(P patch) return scope
+			ThisWithSet set(P)(P patch) return scope @trusted
 			{
 				setPatch(patch);
-				return move(this);
+				return cast(typeof(return))move(this);
 			}
 		}
 		else
@@ -1784,10 +1790,10 @@ struct UpdateOperation(
 
 			static if (is(FieldOrPatch[0] == struct))
 			{
-				typeof(this) set(FieldOrPatch[0] patch) return scope
+				ThisWithSet set(FieldOrPatch[0] patch) return scope @trusted
 				{
 					setPatch(patch);
-					return move(this);
+					return cast(typeof(return))move(this);
 				}
 			}
 			else
@@ -1799,50 +1805,50 @@ struct UpdateOperation(
 
 				enum field = DormField!(T, FieldOrPatch[0]);
 
-				typeof(this) set(typeof(mixin("T.", FieldOrPatch[0])) value) return scope
+				ThisWithSet set(typeof(mixin("T.", FieldOrPatch[0])) value) return scope @trusted
 				{
 					static immutable columnName = field.columnName;
 					updates ~= ffi.FFIUpdate(
 						ffi.ffi(columnName),
 						conditionValue!field(value)
 					);
-					return move(this);
+					return cast(typeof(return))move(this);
 				}
 
 				static if (field.isForeignKey)
 				{
 					alias ModelRef = ModelRefOf!(mixin("T.", FieldOrPatch[0]));
 
-					typeof(this) set(ModelRef.PrimaryKeyType value) return scope
+					ThisWithSet set(ModelRef.PrimaryKeyType value) return scope @trusted
 					{
 						static immutable columnName = field.columnName;
 						updates ~= ffi.FFIUpdate(
 							ffi.ffi(columnName),
 							conditionValue!field(value)
 						);
-						return move(this);
+						return cast(typeof(return))move(this);
 					}
 
-					typeof(this) set(ModelRef.TSelect value) return scope
+					ThisWithSet set(ModelRef.TSelect value) return scope @trusted
 					{
 						static immutable columnName = field.columnName;
 						updates ~= ffi.FFIUpdate(
 							ffi.ffi(columnName),
 							conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
 						);
-						return move(this);
+						return cast(typeof(return))move(this);
 					}
 
 					static if (!is(ModelRef.TSelect == ModelRef.TModel))
 					{
-						typeof(this) set(ModelRef.TModel value) return scope
+						ThisWithSet set(ModelRef.TModel value) return scope @trusted
 						{
 							static immutable columnName = field.columnName;
 							updates ~= ffi.FFIUpdate(
 								ffi.ffi(columnName),
 								conditionValue!field(mixin("value.", ModelRef.primaryKeySourceName))
 							);
-							return move(this);
+							return cast(typeof(return))move(this);
 						}
 					}
 				}
@@ -1850,7 +1856,7 @@ struct UpdateOperation(
 		}
 	}
 
-	private void setPatch(TPatch)(TPatch patch) scope
+	private void setPatch(TPatch)(TPatch patch) scope @safe
 	if (isSomePatch!TPatch)
 	{
 		mixin ValidatePatch!(TPatch, T);
@@ -1874,18 +1880,47 @@ struct UpdateOperation(
 	}
 
 	/**
+	 * Allows calling `.await()` even if no `set` methods have been called. If
+	 * `await` is called without any `set` calls, a `DormUsageException` is
+	 * thrown at runtime in that method.
+	 */
+	ThisWithSetAndRuntimeCheck throwOnNoUpdates() return scope @trusted
+	{
+		return cast(ThisWithSetAndRuntimeCheck)move(this);
+	}
+
+	/**
 	 * Starts the update procedure and waits for the result. Throws in case of
 	 * an error. Returns the number of rows affected.
 	 *
 	 * Uses the state modified by previous calls to the builder methods like
 	 * `set` and `condition` on this builder object.
 	 *
+	 * Only callable if either `set` has been called
+	 *
+	 * Throws: `DormUsageException` if `throwOnNoUpdates` has been and no `set`
+	 * calls have been made. Otherwise may throw `DormException` inherited
+	 * exceptions if there are DB issues.
+	 *
 	 * Bugs: currently does not support joins because the underlying library
 	 * doesn't expose them yet.
 	 */
+	static if (hasAnySet)
+	{
 	ulong await() scope
 	{
 		// TODO: use join information
+
+			static if (runtimeCheck)
+			{
+				if (!updates.length)
+					throw new DormUsageException("Tried to call `update` without any set columns");
+			}
+			else
+			{
+				assert(updates.length, "Expected DB updates here, but didn't have any, "
+					~ "even though CT information should have avoided this case!");
+			}
 
 		return (() @trusted {
 			auto ctx = FreeableAsyncResult!ulong.make;
@@ -1899,6 +1934,16 @@ struct UpdateOperation(
 			);
 			return ctx.result;
 		})();
+	}
+}
+	else
+	{
+		/// ditto
+		ulong await()() scope
+		{
+			static assert(false, "Tried to call `.update.await` without any `.set` calls. If you "
+				~ "conditionally set fields at runtime, operate on the builder after `update.throwOnNoUpdates`");
+		}
 	}
 }
 
