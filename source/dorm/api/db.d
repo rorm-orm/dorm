@@ -2357,20 +2357,7 @@ struct SelectOperation(
 		/// user.
 		TSelect[] array() scope @trusted
 		{
-			enum fields = FilterLayoutFields!(T, TSelect);
-
-			ffi.FFIColumnSelector[fields.length] columns;
-			static foreach (i, field; fields)
-			{{
-				enum aliasedName = "__" ~ field.columnName;
-
-				columns[i] = ffi.FFIColumnSelector(
-					ffi.ffi(DormLayout!T.tableName),
-					ffi.ffi(field.columnName),
-					ffi.ffi(aliasedName)
-				);
-			}}
-
+			auto columns = listDBColumns!(T, TSelect);
 			mixin(makeRtColumns);
 
 			TSelect[] ret;
@@ -2398,20 +2385,7 @@ struct SelectOperation(
 		/// fetched data in, but may still use sparingly the GC in implementation.
 		auto stream() return scope @trusted
 		{
-			enum fields = FilterLayoutFields!(T, TSelect);
-
-			ffi.FFIColumnSelector[fields.length] columns;
-			static foreach (i, field; fields)
-			{{
-				enum aliasedName = "__" ~ field.columnName;
-
-				columns[i] = ffi.FFIColumnSelector(
-					ffi.ffi(DormLayout!T.tableName),
-					ffi.ffi(field.columnName),
-					ffi.ffi(aliasedName)
-				);
-			}}
-
+			auto columns = listDBColumns!(T, TSelect);
 			mixin(makeRtColumns);
 
 			auto stream = sync_call!(ffi.rorm_db_query_stream)(db.handle,
@@ -2432,20 +2406,7 @@ struct SelectOperation(
 		/// Returns the first row of the result data or throws if no data exists.
 		TSelect findOne() scope @trusted
 		{
-			enum fields = FilterLayoutFields!(T, TSelect);
-
-			ffi.FFIColumnSelector[fields.length] columns;
-			static foreach (i, field; fields)
-			{{
-				enum aliasedName = "__" ~ field.columnName;
-
-				columns[i] = ffi.FFIColumnSelector(
-					ffi.ffi(DormLayout!T.tableName),
-					ffi.ffi(field.columnName),
-					ffi.ffi(aliasedName)
-				);
-			}}
-
+			auto columns = listDBColumns!(T, TSelect);
 			mixin(makeRtColumns);
 
 			TSelect ret;
@@ -2469,20 +2430,7 @@ struct SelectOperation(
 		/// Returns the first row of the result data or throws if no data exists.
 		Nullable!TSelect findOptional() scope @trusted
 		{
-			enum fields = FilterLayoutFields!(T, TSelect);
-
-			ffi.FFIColumnSelector[fields.length] columns;
-			static foreach (i, field; fields)
-			{{
-				enum aliasedName = "__" ~ field.columnName;
-
-				columns[i] = ffi.FFIColumnSelector(
-					ffi.ffi(DormLayout!T.tableName),
-					ffi.ffi(field.columnName),
-					ffi.ffi(aliasedName)
-				);
-			}}
-
+			auto columns = listDBColumns!(T, TSelect);
 			mixin(makeRtColumns);
 
 			Nullable!TSelect ret;
@@ -2505,6 +2453,26 @@ struct SelectOperation(
 		}
 	}
 }
+
+/// Returns: Column[n]
+private auto listDBColumns(T, TSelect, Column = ffi.FFIColumnSelector)()
+{
+	enum fields = FilterLayoutFields!(T, TSelect);
+
+	Column[fields.length] columns;
+	static foreach (i, field; fields)
+	{{
+		enum aliasedName = "__" ~ field.columnName;
+
+		columns[i] = Column(
+			ffi.ffi(DormLayout!T.tableName),
+			ffi.ffi(field.columnName),
+			ffi.ffi(aliasedName)
+		);
+	}}
+	return columns;
+}
+
 
 private enum makeRtColumns = q{
 	// inputs: ffi.FFIColumnSelector[n] columns;
