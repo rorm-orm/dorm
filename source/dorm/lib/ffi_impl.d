@@ -668,7 +668,7 @@ struct RormError
 	 *   (perhaps corrupt memory)
 	 * - `std.conv.ConvException` if a value couldn't be parsed
 	 */
-	Exception makeException(string suffix = null) const nothrow @safe
+	Exception makeException(scope const(char)[] suffix = null) const nothrow @safe
 	{
 		import std.conv : text, ConvException;
 		import std.utf : UTFException;
@@ -677,16 +677,16 @@ struct RormError
 		{
 			case Tag.NoError: return null;
 			case Tag.MissingRuntimeError:
-				return new DormUsageException(
-					"Runtime has not been created or has been destroyed, use `mixin SetupDormRuntime;` in your application code"
-					~ suffix);
+				return new DormUsageException(text(
+					"Runtime has not been created or has been destroyed, use `mixin SetupDormRuntime;` in your application code",
+					suffix));
 			case Tag.RuntimeError:
 				return new DormException(
 					text("A runtime error has occurred: ", (() @trusted => this.runtime_error.data)(), suffix));
 			case Tag.InvalidStringError:
-				return new UTFException(
-					"an invalid string has been passed into a dorm function, perhaps corrupted memory? (submit a bug in this case)"
-					~ suffix);
+				return new UTFException(text(
+					"an invalid string has been passed into a dorm function, perhaps corrupted memory? (submit a bug in this case)",
+					suffix));
 			case Tag.ConfigurationError:
 				return new DormException(
 					text("passed invalid configuration: ", (() @trusted => this.configuration_error.data)(), suffix));
@@ -694,26 +694,26 @@ struct RormError
 				return new DatabaseException(
 					text("database error: ", (() @trusted => this.database_error.data)(), suffix));
 			case Tag.NoRowsLeftInStream:
-				return new DatabaseException("There are no rows left in the stream"
-					~ suffix);
+				return new DatabaseException(text("There are no rows left in the stream",
+					suffix));
 			case Tag.ColumnDecodeError:
-				return new DatabaseException("Column could not be converted in the given type"
-					~ suffix);
+				return new DatabaseException(text("Column could not be converted in the given type",
+					suffix));
 			case Tag.ColumnNotFoundError:
-				return new DatabaseException("Column was not found in row"
-					~ suffix);
+				return new DatabaseException(text("Column was not found in row",
+					suffix));
 			case Tag.ColumnIndexOutOfBoundsError:
-				return new DatabaseException("The index in the row was out of bounds"
-					~ suffix);
+				return new DatabaseException(text("The index in the row was out of bounds",
+					suffix));
 			case Tag.InvalidDateError:
-				return new ConvException("The provided date could not be parsed"
-					~ suffix);
+				return new ConvException(text("The provided date could not be parsed",
+					suffix));
 			case Tag.InvalidTimeError:
-				return new ConvException("The provided time could not be parsed"
-					~ suffix);
+				return new ConvException(text("The provided time could not be parsed",
+					suffix));
 			case Tag.InvalidDateTimeError:
-				return new ConvException("The provided datetime could not be parsed"
-					~ suffix);
+				return new ConvException(text("The provided datetime could not be parsed",
+					suffix));
 		}
 	}
 }

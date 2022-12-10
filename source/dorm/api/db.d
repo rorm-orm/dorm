@@ -2703,15 +2703,15 @@ TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row) @safe
 /// Unwraps the row like the other unwrap methods, but prefixes all fields with
 /// `<placeholder>_`, so for example placeholder `foo` and field `user` would
 /// result in `foo_user`.
-TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, string placeholder) @safe
+TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, scope const(char)[] placeholder) @safe
 {
 	scope placeholderDot = new char[placeholder.length + 1];
 	placeholderDot[0 .. placeholder.length] = placeholder;
 	placeholderDot[$ - 1] = '_'; // was dot before, but that's not valid SQL - we use _ to separate names in aliases!
-	return unwrapRowResultImpl!(T, TSelect)(row, (() @trusted => cast(string)placeholderDot)());
+	return unwrapRowResultImpl!(T, TSelect)(row, placeholderDot);
 }
 
-private TSelect unwrapRowResultImpl(T, TSelect)(scope ffi.DBRowHandle row, string columnPrefix) @safe
+private TSelect unwrapRowResultImpl(T, TSelect)(scope ffi.DBRowHandle row, scope const(char)[] columnPrefix) @safe
 {
 	TSelect res;
 	static if (is(TSelect == class))
@@ -2734,13 +2734,13 @@ private TSelect unwrapRowResultImpl(T, TSelect)(scope ffi.DBRowHandle row, strin
 private T extractField(alias field, T, string errInfo)(
 	scope ffi.DBRowHandle row,
 	ref scope ffi.RormError error,
-	string columnPrefix
+	scope const(char)[] columnPrefix
 ) @trusted
 {
 	import std.conv;
 	import dorm.declarative;
 
-	auto columnName = ffi.ffi(columnPrefix.length
+	scope columnName = ffi.ffi(columnPrefix.length
 		? columnPrefix ~ field.columnName
 		: field.columnName);
 
