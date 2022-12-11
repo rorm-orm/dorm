@@ -2697,7 +2697,7 @@ TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row, scope JoinInforma
 /// ditto
 TSelect unwrapRowResult(T, TSelect)(scope ffi.DBRowHandle row) @safe
 {
-	return unwrapRowResultImpl!(T, TSelect, false)(row, null);
+	return unwrapRowResultImpl!(T, TSelect)(row, null);
 }
 
 /// Unwraps the row like the other unwrap methods, but prefixes all fields with
