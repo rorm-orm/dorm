@@ -237,7 +237,8 @@ template FilterLayoutFields(T, TSelect)
 	static if (is(T == TSelect))
 		enum FilterLayoutFields = DormFields!T;
 	else static if (is(TSelect : Model))
-		static assert(false, "Cannot filter for fields of Model class on a Model class");
+		static assert(false, "Cannot filter for fields of Model "
+			~ TSelect.stringof ~ " on a Model " ~ T.stringof);
 	else static if (isImplicitPatch!(T, TSelect))
 		enum FilterLayoutFields = filterFieldsPrefixed!T(
 			ImplicitPatchFieldName!(T, TSelect) ~ ".",
