@@ -259,16 +259,29 @@ struct DormDB
 	/// This is the place where `@constructValue` constructors are called.
 	///
 	/// This method can also be used on transactions.
-	void insert(T)(T value)
+	DBType!T insert(T)(T value)
 	if (!is(T == U[], U))
 	{
-		return (() @trusted => insertImpl!true(handle, (&value)[0 .. 1], null))();
+		return (() @trusted => insertImpl!(DBType!T, true)(handle, (&value)[0 .. 1], null))();
 	}
 
 	/// ditto
-	void insert(T)(scope T[] value)
+	Ret insert(Ret, T)(T value)
+	if (!is(T == U[], U))
 	{
-		return insertImpl!false(handle, value, null);
+		return (() @trusted => insertImpl!(Ret, true)(handle, (&value)[0 .. 1], null))();
+	}
+
+	/// ditto
+	DBType!(T[0]) insert(T)(scope T[] value)
+	{
+		return insertImpl!(DBType!(T[0]), false)(handle, value, null);
+	}
+
+	/// ditto
+	Ret insert(Ret, T)(scope T[] value)
+	{
+		return insertImpl!(Ret, false)(handle, value, null);
 	}
 
 	/**
@@ -621,15 +634,27 @@ struct DormTransaction
 
 	/// Transacted variant of $(LREF DormDB.insert). Can insert a single value
 	/// or multiple values at once.
-	void insert(T)(T value)
+	DBType!T insert(T)(T value)
 	{
-		return (() @trusted => insertImpl!true(db.handle, (&value)[0 .. 1], txHandle))();
+		return (() @trusted => insertImpl!(DBType!T, true)(db.handle, (&value)[0 .. 1], txHandle))();
 	}
 
 	/// ditto
-	void insert(T)(scope T[] value)
+	Ret insert(Ret, T)(T value)
 	{
-		return insertImpl!false(db.handle, value, txHandle);
+		return (() @trusted => insertImpl!(Ret, true)(db.handle, (&value)[0 .. 1], txHandle))();
+	}
+
+	/// ditto
+	DBType!(T[0]) insert(T)(scope T[] value)
+	{
+		return insertImpl!(DBType!(T[0]), false)(db.handle, value, txHandle);
+	}
+
+	/// ditto
+	Ret insert(Ret, T)(scope T[] value)
+	{
+		return insertImpl!(Ret, false)(db.handle, value, txHandle);
 	}
 
 	/**
@@ -727,7 +752,7 @@ private string makePatchAccessPrefix(Patch, DB)()
 	return ret;
 }
 
-private void insertImpl(bool single, T)(
+private Ret insertImpl(Ret, bool single, T)(
 	scope ffi.DBHandle handle,
 	scope T[] value,
 	ffi.DBTransactionHandle transaction)
@@ -880,16 +905,54 @@ private void insertImpl(bool single, T)(
 		}
 	}
 
-
 	(() @trusted {
-		auto ctx = FreeableAsyncResult!void.make;
+		static if (is(Ret == void))
+		{
+			alias retArgs = AliasSeq!();
+			auto ctx = FreeableAsyncResult!void.make;
+		}
+		else
+		{
+			static if (is(Ret == U[], U))
+				scope retFields = listDBColumns!(DB, U, ffi.FFIReturnColumn);
+			else
+				scope retFields = listDBColumns!(DB, Ret, ffi.FFIReturnColumn);
+
+			scope retFieldsFfi = ffi.ffi(retFields[]);
+			alias retArgs = AliasSeq!(retFieldsFfi);
+
+			Ret retVal;
+
+			static if (is(Ret == U[], U))
+			{
+				auto ctx = FreeableAsyncResult!(void delegate(scope ffi.FFIArray!(ffi.DBRowHandle))).make;
+				ctx.forward_callback = (scope data) {
+					retVal.length = data.size;
+					foreach (i; 0 .. data.size)
+						retVal[i] = unwrapRowResult!(DB, U)(data.data[i]);
+				};
+			}
+			else
+			{
+				auto ctx = FreeableAsyncResult!(void delegate(scope ffi.DBRowHandle)).make;
+				ctx.forward_callback = (scope data) {
+					retVal = unwrapRowResult!(DB, Ret)(data);
+				};
+			}
+		}
+
 		static if (single)
 		{
-			ffi.rorm_db_insert(handle,
+			static if (is(Ret == void))
+				alias fn = ffi.rorm_db_insert;
+			else
+				alias fn = ffi.rorm_db_insert_returning;
+
+			fn(handle,
 				transaction,
 				ffi.ffi(DormLayout!DB.tableName),
 				ffi.ffi(columns),
-				ffi.ffi(values[0]), ctx.callback.expand);
+				ffi.ffi(values[0]), retArgs, ctx.callback.expand);
 		}
 		else
 		{
@@ -897,13 +960,23 @@ private void insertImpl(bool single, T)(
 			foreach (i; 0 .. values.length)
 				rows[i] = ffi.ffi(values[i]);
 
-			ffi.rorm_db_insert_bulk(handle,
+			static if (is(Ret == void))
+				alias fn = ffi.rorm_db_insert_bulk;
+			else static if (is(Ret == U[], U))
+				alias fn = ffi.rorm_db_insert_bulk_returning;
+			else
+				static assert(false, "Don't know how to return " ~ Ret.stringof ~ " from insert()");
+
+			fn(handle,
 				transaction,
 				ffi.ffi(DormLayout!DB.tableName),
 				ffi.ffi(columns),
-				ffi.ffi(rows), ctx.callback.expand);
+				ffi.ffi(rows), retArgs, ctx.callback.expand);
 		}
 		ctx.result();
+
+		static if (!is(Ret == void))
+			return retVal;
 	})();
 }
 

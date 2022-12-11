@@ -834,9 +834,9 @@ struct FFIColumn
 
 /**
  * Allows specifying SQL `table_name.column_name as select_alias` syntax in a
- * DB-agnostic way.
+ * DB-agnostic way. (used where only basic columns are expected)
  */
-struct FFIColumnSelector
+struct FFIReturnColumn
 {
 @safe:
 	/// Optionally define which table or join alias this column comes from.
@@ -862,6 +862,89 @@ struct FFIColumnSelector
 		this.tableName = tableName;
 		this.columnName = columnName;
 		this.selectAlias = selectAlias;
+	}
+}
+
+/// Representation of an aggregator function
+enum FFIAggregation
+{
+	/**
+	 * Returns the average value of all non-null values.
+	 * The result of avg is a floating point value, except all input values are
+	 * null, then the result will also be null.
+	 */
+	avg,
+	/**
+	 * Returns the count of the number of times that the column is not null.
+	 */
+	count,
+	/**
+	 * Returns the summary off all non-null values in the group.
+	 * If there are only null values in the group, this function will return
+	 * null.
+	 */
+	sum,
+	/**
+	 * Returns the maximum value of all values in the group.
+	 * If there are only null values in the group, this function will return
+	 * null.
+	 */
+	max,
+	/**
+	 * Returns the minimum value of all values in the group.
+	 * If there are only null values in the group, this function will return
+	 * null.
+	 */
+	min
+}
+
+/**
+ * Allows specifying SQL `table_name.column_name as select_alias` syntax in a
+ * DB-agnostic way. (used in queries)
+ */
+struct FFIColumnSelector
+{
+@safe:
+	/// Optionally define which table or join alias this column comes from.
+	FFIOption!FFIString tableName;
+	/// The column name to select.
+	FFIString columnName;
+	/// Optionally rename to a different output name than `column_name`.
+	FFIOption!FFIString selectAlias;
+	/// Optionally wrap this column selector in an aggregation function.
+	FFIOption!FFIAggregation aggregation;
+
+	this(
+		FFIString columnName,
+		FFIOption!FFIAggregation aggregation = FFIOption!FFIAggregation.init
+	)
+	{
+		this.columnName = columnName;
+		this.aggregation = aggregation;
+	}
+
+	this(
+		FFIString tableName,
+		FFIString columnName,
+		FFIOption!FFIAggregation aggregation = FFIOption!FFIAggregation.init
+	)
+	{
+		this.tableName = tableName;
+		this.columnName = columnName;
+		this.aggregation = aggregation;
+	}
+
+	this(
+		FFIString tableName,
+		FFIString columnName,
+		FFIString selectAlias,
+		FFIOption!FFIAggregation aggregation = FFIOption!FFIAggregation.init
+	)
+	{
+		this.tableName = tableName;
+		this.columnName = columnName;
+		this.selectAlias = selectAlias;
+		this.aggregation = aggregation;
 	}
 }
 
