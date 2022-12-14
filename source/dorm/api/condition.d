@@ -1,7 +1,5 @@
 module dorm.api.condition;
 
-@safe:
-
 import std.conv;
 import std.datetime;
 import std.sumtype;
@@ -40,12 +38,12 @@ struct Condition
 		return this;
 	}
 
-	static Condition and(Condition[] conditions...)
+	static Condition and(Condition[] conditions...) @safe
 	{
 		return Condition(AndCondition(conditions.dup));
 	}
 
-	static Condition or(Condition[] conditions...)
+	static Condition or(Condition[] conditions...) @safe
 	{
 		return Condition(OrCondition(conditions.dup));
 	}
@@ -327,7 +325,7 @@ ffi.FFICondition[] makeTree(Condition c) @trusted
 	return ret;
 }
 
-string dumpTree(ffi.FFICondition[] c)
+string dumpTree(ffi.FFICondition[] c) @safe
 {
 	import std.array : appender;
 	import std.format : format;
@@ -470,7 +468,7 @@ string dumpTree(ffi.FFICondition[] c)
 	return query.data;
 }
 
-unittest
+@safe unittest
 {
 	import std.array;
 

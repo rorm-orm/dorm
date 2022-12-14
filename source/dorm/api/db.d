@@ -1507,6 +1507,26 @@ struct ConditionBuilderField(T, ModelFormat.Field field)
 		return Condition(BinaryCondition(BinaryConditionType.NotEquals, lhs, makeConditionConstant!field(value)));
 	}
 
+	/// Returns: SQL condition `field == value[0] OR field == value[1] OR ... OR field == value[$ - 1]`
+	Condition among(Range)(Range values) @safe
+	{
+		Condition[] conditions;
+		static if (__traits(hasMember, values, "length"))
+		{
+			conditions.length = values.length;
+			size_t i = -1;
+			foreach (value; values)
+				(() @trusted => conditions[++i] = equals(value))();
+		}
+		else
+		{
+			foreach (i, value; values)
+				conditions ~= equals(value);
+		}
+
+		return Condition.or(conditions);
+	}
+
 	static if (field.type == ModelFormat.Field.DBType.boolean)
 	{
 		/// Returns: SQL condition `field == true`
