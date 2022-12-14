@@ -64,4 +64,19 @@ void main()
 	assert(sortedComments.length == 2);
 	assert(sortedComments[0].author.populated.fullName == "Alice is cool");
 	assert(sortedComments[1].author.populated.fullName == "Bob Bobbington");
+
+	assert(!sortedComments[0].replyTo.isPopulated);
+	assert(!sortedComments[1].replyTo.isPopulated);
+
+	db.populate(sortedComments[0].replyTo);
+	assert(sortedComments[0].replyTo.isPopulated);
+	assert(sortedComments[0].replyTo.populated.message == "Hello world!");
+
+	sortedComments[0].replyTo.clear();
+	assert(!sortedComments[0].replyTo.isPopulated);
+
+	db.populate([&sortedComments[0].replyTo, &sortedComments[1].replyTo]);
+
+	assert(sortedComments[0].replyTo.isPopulated);
+	assert(sortedComments[1].replyTo.isPopulated);
 }

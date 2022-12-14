@@ -341,6 +341,26 @@ struct DormDB
 	{
 		return RawSQLIterator(&this, null, queryString, bindParams);
 	}
+
+	/** 
+	 * Using a `ModelRef` as an argument this queries for the value referenced
+	 * to by the foreign key. Assigns the result into the `ModelRef` field, so
+	 * `field.populated` can be called by the user afterwards to work on the
+	 * data that was queried with `populate`.
+	 *
+	 * Params:
+	 *     field = a reference to a `ModelRef` variable or multiple by reference.
+	 */
+	void populate(T)(ref T field)
+	{
+		populateImpl(this, field);
+	}
+
+	/// ditto
+	void populate(T)(T*[] field)
+	{
+		populateImpl(this, field);
+	}
 }
 
 // defined this as global so that we can pass `Foo.fieldName` as alias argument,
@@ -702,6 +722,50 @@ struct DormTransaction
 		alias T = DBType!TPatch;
 		return remove!T.single(instance);
 	}
+
+	/** 
+	 * Using a `ModelRef` as an argument this queries for the value referenced
+	 * to by the foreign key. Assigns the result into the `ModelRef` field, so
+	 * `field.populated` can be called by the user afterwards to work on the
+	 * data that was queried with `populate`.
+	 *
+	 * Params:
+	 *     field = a reference to a `ModelRef` variable or multiple by reference.
+	 */
+	void populate(T)(ref T field)
+	{
+		populateImpl(this, field);
+	}
+
+	/// ditto
+	void populate(T)(T*[] field)
+	{
+		populateImpl(this, field);
+	}
+}
+
+private void populateImpl(DB, T)(ref DB db, ref T field) @safe
+if (isModelRef!T)
+{
+	field = db.select!(T.TSelect)
+		.condition(c => __traits(getMember, c, T.primaryKeySourceName).equals(field.foreignKey))
+		.findOne();
+}
+
+private void populateImpl(DB, T)(ref DB db, T*[] fields) @safe
+if (isModelRef!T)
+{
+	import std.algorithm : map;
+
+	auto q = db.select!(T.TSelect)
+		.condition(c => __traits(getMember, c, T.primaryKeySourceName).among(fields.map!"a.foreignKey"));
+
+	(() @trusted {
+		foreach (row; q.stream())
+			foreach (field; fields)
+				if (field.foreignKey == mixin("row.", T.primaryKeySourceName))
+					field.opAssign(row);
+	})();
 }
 
 private string makePatchAccessPrefix(Patch, DB)()
