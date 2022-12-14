@@ -164,6 +164,12 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 		return cached;
 	}
 
+	/// Sets the `isPopulated` flag to false.
+	void clear()
+	{
+		resolved = false;
+	}
+
 	/**
 	 * Sets the populated value as well as the foreign key for saving in the DB.
 	 */
@@ -201,6 +207,8 @@ static template ModelRefOf(alias field)
 	else
 		alias ModelRefOf = T;
 }
+
+static enum isModelRef(T) = is(immutable T == immutable ModelRefImpl!(id, T, U), alias id, T, U);
 
 // TODO: need to figure out how to make BackRefs
 version (none)
