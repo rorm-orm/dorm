@@ -30,6 +30,9 @@ do
 		rm -rf migrations
 		rm -f .models.json
 		rm -f *.sqlite3
+		if [ -f .pre-run-hook.sh ]; then
+			source .pre-run-hook.sh
+		fi
 		if [ ! -f database.toml ]; then
 		  echo "$DATABASE_CONFIG" > database.toml
 		fi
