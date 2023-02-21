@@ -156,7 +156,7 @@ FFIValue conditionValue(ModelFormat.Field fieldInfo, T)(T c) @trusted
 	else static if (is(T : Date))
 	{
 		ret.type = FFIValue.Type.NaiveDate;
-		ret.naiveDate = ffi.FFIDate(cast(uint)c.day, cast(uint)c.month, cast(int)c.year);
+		ret.naiveDate = ffi.FFIDate(cast(uint)c.year, cast(uint)c.month, cast(int)c.day);
 	}
 	else static if (is(T : TimeOfDay))
 	{
