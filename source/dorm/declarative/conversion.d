@@ -1032,6 +1032,51 @@ unittest
 
 unittest
 {
+	struct Mod
+	{
+		class User : Model
+		{
+			@maxLength(255) @primaryKey
+			string username;
+		}
+
+		class Toot : Model
+		{
+			@Id long id;
+
+			NullableModelRef!(User.username) author;
+		}
+	}
+
+	static assert(DormForeignKeys!(Mod.Toot).length == 1);
+	static assert(DormForeignKeys!(Mod.Toot)[0].columnName == "author");
+
+	auto mod = processModelsToDeclarations!Mod;
+	assert(mod.models.length == 2);
+	auto m = mod.models[0];
+	assert(m.fields.length == 1);
+
+	assert(m.fields[0].columnName == "username");
+	assert(m.fields[0].annotations == [
+		DBAnnotation(maxLength(255)),
+		DBAnnotation(AnnotationFlag.primaryKey)
+	]);
+
+	m = mod.models[1];
+	assert(m.fields.length == 2);
+
+	assert(m.fields[1].columnName == "author");
+	assert(m.fields[1].annotations == [
+		DBAnnotation(maxLength(255)),
+		DBAnnotation(ForeignKeyImpl(
+			"user", "username",
+			restrict, restrict
+		))
+	]);
+}
+
+unittest
+{
 	// cyclic ref
 	struct Mod
 	{

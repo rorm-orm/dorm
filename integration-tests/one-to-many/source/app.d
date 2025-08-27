@@ -8,9 +8,11 @@ import std.datetime.systime;
 import std.exception;
 import std.range;
 import std.stdio;
+import std.typecons;
 
 import dorm.api.db;
 import dorm.declarative.conversion;
+import dorm.types.relations;
 
 mixin SetupDormRuntime;
 
@@ -32,9 +34,17 @@ void main()
 	db.insert(user2);
 
 	Toot toot = new Toot();
+	toot.id = 1;
 	toot.message = "Hello world!";
 	toot.author = user;
 	db.insert(toot);
+
+	Toot toot2 = new Toot();
+	toot2.id = 2;
+	toot2.message = "Hello world!";
+	toot2.author = user;
+	toot2.dmTo = ModelRef!User(user2);
+	db.insert(toot2);
 
 	Comment.Fields comment;
 	comment.replyTo = toot;
@@ -47,6 +57,13 @@ void main()
 	comment2.message = "I like this";
 	comment2.author.foreignKey = user2.id;
 	db.insert(comment2);
+
+	auto allToots = db.select!Toot
+		.array;
+	assert(allToots.length == 2);
+	assert(allToots[0].dmTo.isNull);
+	assert(!allToots[1].dmTo.isNull);
+	assert(allToots[1].dmTo.get.foreignKey == user2.id);
 
 	auto allComments = db.select!Comment
 		.array;

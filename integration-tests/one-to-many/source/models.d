@@ -22,6 +22,7 @@ class Toot : Model
 	@autoCreateTime
 	SysTime createdAt;
 	ModelRef!User author;
+	NullableModelRef!User dmTo;
 }
 
 @DormPatch!User

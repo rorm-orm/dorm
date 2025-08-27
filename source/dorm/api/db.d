@@ -9,22 +9,22 @@ import dorm.types;
 import ffi = dorm.lib.ffi;
 
 import std.algorithm : any, move;
-import std.range : chain;
 import std.conv : text, to;
 import std.datetime : Clock, Date, DateTime, DateTimeException, SysTime, TimeOfDay, UTC;
 import std.meta;
+import std.range : chain;
 import std.range.primitives;
 import std.traits;
 import std.typecons : Nullable;
 
-import mir.serde;
 import mir.algebraic;
+import mir.serde;
 
 import core.attribute;
 import core.time;
 
-public import dorm.types : DormPatch;
 public import dorm.lib.ffi : DBBackend;
+public import dorm.types : DormPatch;
 
 public import dorm.api.condition;
 
@@ -58,7 +58,7 @@ struct BareConfiguration
 T parseTomlConfig(T)(string filename)
 {
 	import mir.toml;
-	import std.file : readText, exists;
+	import std.file : exists, readText;
 
 	if (!exists(filename))
 		throw new DormException("TOML Configuration file '" ~ filename
@@ -342,7 +342,7 @@ struct DormDB
 		return RawSQLIterator(&this, null, queryString, bindParams);
 	}
 
-	/** 
+	/**
 	 * Using a `ModelRef` as an argument this queries for the value referenced
 	 * to by the foreign key. Assigns the result into the `ModelRef` field, so
 	 * `field.populated` can be called by the user afterwards to work on the
@@ -723,11 +723,14 @@ struct DormTransaction
 		return remove!T.single(instance);
 	}
 
-	/** 
+	/**
 	 * Using a `ModelRef` as an argument this queries for the value referenced
 	 * to by the foreign key. Assigns the result into the `ModelRef` field, so
 	 * `field.populated` can be called by the user afterwards to work on the
 	 * data that was queried with `populate`.
+	 *
+	 * Also supports `Nullable!ModelRef`, ignoring it if it is null, otherwise
+	 * unwrapping it.
 	 *
 	 * Params:
 	 *     field = a reference to a `ModelRef` variable or multiple by reference.
@@ -752,6 +755,15 @@ if (isModelRef!T)
 		.findOne();
 }
 
+private void populateImpl(DB, T)(ref DB db, ref Nullable!T field) @safe
+if (isModelRef!T)
+{
+	if (!field.isNull)
+		field = db.select!(T.TSelect)
+			.condition(c => __traits(getMember, c, T.primaryKeySourceName).equals(field.get.foreignKey))
+			.findOne();
+}
+
 private void populateImpl(DB, T)(ref DB db, T*[] fields) @safe
 if (isModelRef!T)
 {
@@ -764,6 +776,24 @@ if (isModelRef!T)
 		foreach (row; q.stream())
 			foreach (field; fields)
 				if (field.foreignKey == mixin("row.", T.primaryKeySourceName))
+					field.opAssign(row);
+	})();
+}
+
+private void populateImpl(DB, T)(ref DB db, Nullable!T*[] fields) @safe
+if (isModelRef!T)
+{
+	import std.algorithm : filter, map;
+
+	auto q = db.select!(T.TSelect)
+		.condition(c => __traits(getMember, c, T.primaryKeySourceName).among(fields
+			.filter!"!a.isNull"
+			.map!"a.get.foreignKey"));
+
+	(() @trusted {
+		foreach (row; q.stream())
+			foreach (field; fields)
+				if (!field.foreignKey.isNull && field.foreignKey.get == mixin("row.", T.primaryKeySourceName))
 					field.opAssign(row);
 	})();
 }
@@ -2821,8 +2851,8 @@ private T extractField(alias field, T, string errInfo)(
 	scope const(char)[] columnPrefix
 ) @trusted
 {
-	import std.conv;
 	import dorm.declarative;
+	import std.conv;
 
 	scope columnName = ffi.ffi(columnPrefix.length
 		? columnPrefix ~ field.columnName
@@ -3073,8 +3103,8 @@ mixin template SetupDormRuntime(alias timeout = 10.seconds)
 
 	shared static this() @trusted
 	{
-		import dorm.lib.util : sync_call;
 		import dorm.lib.ffi : rorm_runtime_start;
+		import dorm.lib.util : sync_call;
 
 		sync_call!(rorm_runtime_start)();
 		_initializedDormRuntime = true;
@@ -3083,8 +3113,8 @@ mixin template SetupDormRuntime(alias timeout = 10.seconds)
 	shared static ~this() @trusted
 	{
 		import core.time : Duration;
-		import dorm.lib.util;
 		import dorm.lib.ffi : rorm_runtime_shutdown;
+		import dorm.lib.util;
 
 		if (_initializedDormRuntime)
 		{

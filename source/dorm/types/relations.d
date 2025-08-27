@@ -92,8 +92,6 @@ version(none) static struct ManyToManyField(alias idOrModel)
  * supporting proactively fetched joined data from the database. Trying to
  * access the populated data without having it populated will result in a
  * program crash through `assert(false)`.
- *
- * Bugs: `db.populate(ModelRef)` is not yet implemented
  */
 static template ModelRef(alias idOrPatch)
 {
@@ -198,6 +196,9 @@ static struct ModelRefImpl(alias id, _TModel, _TSelect)
 		}
 	}
 }
+
+/// Alias for `Nullable!(ModelRef!T)`, indicating a reference which can be null.
+alias NullableModelRef(alias T) = Nullable!(ModelRef!T);
 
 static template ModelRefOf(alias field)
 {
